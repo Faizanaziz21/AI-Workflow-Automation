@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     otel_service_name: str = "flowforge"
     metrics_enabled: bool = True
 
+    # Retention (days; 0 = keep forever). Organizations can override both in their settings.
+    execution_retention_days: int = Field(default=90, ge=0)
+    audit_retention_days: int = Field(default=365, ge=0)
+
     # Bootstrap
     seed_templates: bool = True
 

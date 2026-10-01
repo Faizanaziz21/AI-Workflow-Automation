@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.db.enums import Role
 from app.schemas.common import ORMModel
@@ -45,6 +45,14 @@ class OrganizationOut(ORMModel):
 class OrganizationUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
     settings: dict[str, Any] | None = None
+
+    @field_validator("settings")
+    @classmethod
+    def _retention_values(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        for key in ("execution_retention_days", "audit_retention_days"):
+            if v and key in v and (not isinstance(v[key], int) or isinstance(v[key], bool) or v[key] < 0):
+                raise ValueError(f"{key} must be a non-negative integer (0 keeps data forever)")
+        return v
 
 
 class WorkspaceIn(BaseModel):

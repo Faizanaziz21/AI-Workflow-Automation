@@ -6,6 +6,7 @@ Any number of replicas may run; a PostgreSQL advisory lock elects one leader tha
 * fires due cron triggers exactly once per tick (row locks + idempotency keys),
 * enqueues due connector-polling triggers (IMAP, database CDC, Google Drive, App triggers),
 * re-advances stalled executions (active, but with no pending work) as a self-healing safety net,
+* purges executions, audit logs and AI usage past their retention period (hourly, in bounded batches),
 * publishes queue-depth gauges.
 
 It can run embedded in a worker (default) or standalone: ``python -m app.workers.scheduler``.
@@ -25,6 +26,7 @@ from app.core.logging import configure_logging
 from app.core.metrics import QUEUE_DEPTH
 from app.db.session import get_sessionmaker
 from app.engine import executor, queue
+from app.services import retention
 from app.services.triggers import enqueue_due_polls, fire_due_schedules
 from app.workers.worker import asyncpg_dsn
 
@@ -61,6 +63,11 @@ class Scheduler:
                 await session.commit()
             if stats["stalled"]:
                 logger.warning("re-advanced %s stalled executions", stats["stalled"])
+        if self._ticks % 3600 == 120:  # two minutes after start, then roughly hourly
+            async with sm() as session:
+                purged = await retention.purge_expired(session)
+                await session.commit()
+            stats.update({f"purged_{k}": v for k, v in purged.items()})
         if stats["reaped"]:
             logger.warning("recovered %s jobs with expired leases", stats["reaped"])
         return stats

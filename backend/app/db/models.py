@@ -322,6 +322,7 @@ class Execution(IdMixin, Base):
         Index("ix_exec_org_created", "org_id", "created_at"),
         Index("ix_exec_org_status", "org_id", "status"),
         Index("ix_exec_active_created", "created_at", postgresql_where=text("status IN ('RUNNING', 'RETRYING')")),
+        Index("ix_exec_finished", "finished_at", postgresql_where=text("finished_at IS NOT NULL")),
         Index("ix_exec_workflow_created", "workflow_id", "created_at"),
         Index("ix_exec_correlation", "org_id", "correlation_key", postgresql_where=text("correlation_key IS NOT NULL")),
     )
@@ -454,7 +455,10 @@ class Job(Base):
 
 class DeadLetter(IdMixin, Base):
     __tablename__ = "dead_letters"
-    __table_args__ = (Index("ix_dead_letters_org", "org_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_dead_letters_org", "org_id", "created_at"),
+        Index("ix_dead_letters_execution", "execution_id"),
+    )
 
     org_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType)
     execution_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType)

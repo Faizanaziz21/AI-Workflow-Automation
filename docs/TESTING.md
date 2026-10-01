@@ -2,7 +2,7 @@
 
 | Layer | Tooling | Count | Runs in CI |
 |---|---|---|---|
-| Backend unit, integration, API, engine, recovery, isolation, permission, connector, AI | pytest + pytest-asyncio, httpx ASGI client, respx, real PostgreSQL and Redis | 169 test cases | yes |
+| Backend unit, integration, API, engine, recovery, isolation, permission, connector, AI | pytest + pytest-asyncio, httpx ASGI client, respx, real PostgreSQL and Redis | 173 test cases | yes |
 | End-to-end flagship workflow | pytest against the sandbox services (in-process) | 1 scenario, 23 nodes | yes |
 | Console E2E | Playwright (Chromium) against a running stack | 3 journeys | yes |
 | Static checks | ruff (lint + format), `alembic check`, ESLint, `tsc --noEmit` | | yes |
@@ -49,6 +49,7 @@ Helpers in `tests/conftest.py`:
 | `test_triggers.py` | Signed webhooks (bad/tampered signatures rejected) and dedupe, synchronous webhook responses, API events with filters, file upload trigger with CSV processing, cron exactly-once, database CDC polling, App trigger polling and error reporting |
 | `test_ai.py` | Schema repair loop, retries then fallback with cost accounting, non-retryable errors, pricing, Anthropic structured output and refusal handling, Gemini request shape, AI nodes in workflows, prompt versioning and pinning |
 | `test_templates.py` | Ten templates with unique slugs, every template valid once connections are mapped, installs without connections require selection |
+| `test_retention.py` | Expired executions purged with their history, recent ones and unresolved failures kept, per-org override and validation, audit-log retention |
 | `test_dashboard.py` | KPIs against known data, workspace scoping, Prometheus metrics endpoint |
 | `test_flagship_e2e.py` | The Enterprise Customer Support Automation template end to end against the sandbox: AI triage, CRM lookup, KB-grounded reply, confidence gate, human review, ticket, Slack, email, analytics row |
 

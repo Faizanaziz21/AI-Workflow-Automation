@@ -235,6 +235,13 @@ These properties are exercised by `tests/test_engine.py` (worker killed mid-node
 duplicate deliveries, partial retry, replay, cancel during a running node, pause/resume, timers, signals,
 loops, sub-workflows, execution deadlines).
 
+## Retention
+
+Finished executions are purged after `FF_EXECUTION_RETENTION_DAYS` (default 90; organizations override it with
+`settings.execution_retention_days`; `0` keeps them forever). The purge deletes the execution with its node runs,
+events, approval requests, jobs and resolved dead letters. Executions with an **unresolved** dead letter are kept
+until an operator requeues or dismisses it.
+
 ## Idempotent triggers
 
 * Webhooks: the `Idempotency-Key` header, or a header configured on the trigger (for example

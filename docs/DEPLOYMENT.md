@@ -42,7 +42,7 @@ docker compose --profile tracing up -d     # + OpenTelemetry collector and Jaege
 | `nginx` | Edge proxy: per-IP rate limits, routing `/api` → api, `/` → web, upstream DNS re-resolution | `:8080` |
 | `api` ×2 | FastAPI (one uvicorn process per container) | internal `:8000` |
 | `worker` ×2 | Job execution (`FF_EMBEDDED_SCHEDULER=false`) | metrics `:9101` |
-| `scheduler` | Leader-elected maintenance loop (reaper, cron, polling, stalled sweep, gauges) | |
+| `scheduler` | Leader-elected maintenance loop (reaper, cron, polling, stalled sweep, retention purge, gauges) | |
 | `migrate` | `alembic upgrade head`, runs to completion before api/worker/scheduler start | |
 | `web` | Next.js console | internal `:3000` |
 | `postgres`, `redis` | State (named volumes `pgdata`, `redisdata`) | |
@@ -82,6 +82,8 @@ All settings use the `FF_` prefix (`backend/app/core/config.py`). List values ac
 | `FF_WEBHOOK_SYNC_TIMEOUT_SECONDS` | `30` | `wait_for_response` webhooks |
 | `FF_ALLOW_PRIVATE_NETWORK_EGRESS` | `false` | `true` only for development / sandbox |
 | `FF_EGRESS_ALLOWLIST` | empty | Host globs allowed despite private addresses (e.g. `*.corp.internal`) |
+| `FF_EXECUTION_RETENTION_DAYS` | `90` | Finished executions (with node runs, events, approvals) are purged after this; `0` keeps forever. Per-org override: `settings.execution_retention_days` |
+| `FF_AUDIT_RETENTION_DAYS` | `365` | Audit log and AI usage ledger retention; `0` keeps forever. Per-org override: `settings.audit_retention_days` |
 | `FF_STORAGE_DIR` | `./storage` | Uploaded files (mount a volume / PVC) |
 | `FF_MAX_UPLOAD_BYTES` | 25 MB | |
 | `FF_OTEL_EXPORTER_ENDPOINT` | unset | OTLP/HTTP endpoint enables tracing |

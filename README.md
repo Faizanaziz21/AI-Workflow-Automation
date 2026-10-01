@@ -137,7 +137,7 @@ by regression tests. Details and full latency tables are in [docs/BENCHMARKS.md]
 | Security | Argon2id, PyJWT, AES-256-GCM (`cryptography`), HMAC-SHA256 webhooks |
 | Observability | Prometheus, Grafana, OpenTelemetry, structured JSON logs |
 | Delivery | Docker (multi-stage, non-root), Docker Compose, Kubernetes + Kustomize, GitHub Actions |
-| Testing | pytest (169 cases, real PostgreSQL/Redis), respx, Playwright, custom async load harness |
+| Testing | pytest (173 cases, real PostgreSQL/Redis), respx, Playwright, custom async load harness |
 
 ## Getting started
 
@@ -161,7 +161,7 @@ connections at real accounts. No workflow changes are needed.
 [TESTING.md](docs/TESTING.md).
 
 ```bash
-cd backend && pip install -e ".[dev]" && pytest -q            # 169 tests, ~40 s
+cd backend && pip install -e ".[dev]" && pytest -q            # 173 tests, ~45 s
 cd frontend && npm ci && npm run build && npx playwright test   # console E2E
 python loadtest/flowforge_load.py --label my-run              # load test against a running stack
 ```

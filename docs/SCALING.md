@@ -69,9 +69,13 @@ See [BENCHMARKS.md](BENCHMARKS.md) for the full tables. Headline figures:
    and because asyncpg uses prepared statements, use PgBouncer ≥ 1.21 with `max_prepared_statements` enabled.
 4. **Read replicas for dashboards.** Dashboard and audit queries are read-only and time-bounded; point them at a
    replica when they compete with the write path.
-5. **Partition history.** `execution_events` and `node_runs` grow fastest. Partition them by month on
-   `created_at`/`scheduled_at` and drop or archive old partitions according to your retention policy. The queue
-   and the execution state machine only touch recent rows.
+5. **Bound history.** The scheduler purges finished executions (with their node runs, events and approvals)
+   after `FF_EXECUTION_RETENTION_DAYS` (default 90), and the audit log and AI usage after
+   `FF_AUDIT_RETENTION_DAYS` (default 365). It works hourly in batches of 500 rows, indexed on `finished_at`,
+   so the purge never holds long locks. Organizations can override both. At very high volumes (hundreds of
+   millions of node runs), monthly partitioning of `node_runs` and `execution_events` turns purges into partition
+   drops. That changes their primary keys to include the partition column, so it is left as a deliberate migration
+   for that scale rather than the default.
 6. **Tune per workload.** Raise `FF_WORKER_CONCURRENCY` for I/O-heavy workflows (slow APIs, LLMs); lower it for
    CPU-heavy ones (large CSV/Excel transforms). Use `settings.max_parallel_nodes` to stop one wide workflow
    monopolising a worker.

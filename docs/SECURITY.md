@@ -155,6 +155,7 @@ flowchart LR
 * Each row has actor (user or API key), action, resource, outcome (`success`/`failure`/`denied`), IP, user agent,
   request id and structured details. Secret values are never recorded.
 * Rows are written in the same transaction as the change they describe, so there is no change without a record.
+* Audit rows are kept for `FF_AUDIT_RETENTION_DAYS` (default 365, per-organization override, `0` = forever).
 * Full-text search (`GET /audit-logs?q=…`) uses a GIN index. Filters cover action prefix, outcome, actor,
   resource and time range. The log is visible to Org Admins only and is tenant-scoped.
 
