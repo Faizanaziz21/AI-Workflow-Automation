@@ -27,7 +27,7 @@ from app.core.logging import configure_logging
 from app.core.metrics import JOB_LATENCY, JOBS_PROCESSED, WORKER_INFLIGHT
 from app.core.telemetry import configure_tracer_provider, get_tracer
 from app.db.models import Execution
-from app.db.session import get_sessionmaker
+from app.db.session import configure_pool, get_sessionmaker
 from app.engine import executor, queue
 from app.engine.runner import run_node
 from app.services.triggers import poll_trigger
@@ -59,7 +59,7 @@ class Worker:
         self._wake = asyncio.Event()
         self._stopping = asyncio.Event()
         self.processed = 0
-        self.handlers: dict[str, Callable[[queue.ClaimedJob], Awaitable[None]]] = {
+        self.handlers: dict[str, Callable[[queue.ClaimedJob], Awaitable[bool]]] = {
             executor.JOB_ADVANCE: self._advance,
             executor.JOB_NODE: self._node,
             executor.JOB_TIMEOUT: self._timeout,
@@ -68,21 +68,29 @@ class Worker:
 
     # -- handlers -------------------------------------------------------------------------------
 
-    async def _advance(self, job: queue.ClaimedJob) -> None:
+    # Handlers return True when they deleted their job inside their own transaction (state change and job
+    # completion commit atomically); otherwise the worker completes the job afterwards.
+
+    async def _advance(self, job: queue.ClaimedJob) -> bool:
         async with get_sessionmaker()() as session:
             await executor.advance(session, uuid.UUID(job.payload["execution_id"]))
+            await queue.complete(session, job.id, self.worker_id)
             await session.commit()
+        return True
 
-    async def _node(self, job: queue.ClaimedJob) -> None:
-        await run_node(job.payload, self.worker_id)
+    async def _node(self, job: queue.ClaimedJob) -> bool:
+        return await run_node(job.payload, self.worker_id, job.id)
 
-    async def _timeout(self, job: queue.ClaimedJob) -> None:
+    async def _timeout(self, job: queue.ClaimedJob) -> bool:
         async with get_sessionmaker()() as session:
             await executor.handle_timeout(session, uuid.UUID(job.payload["execution_id"]))
+            await queue.complete(session, job.id, self.worker_id)
             await session.commit()
+        return True
 
-    async def _poll(self, job: queue.ClaimedJob) -> None:
+    async def _poll(self, job: queue.ClaimedJob) -> bool:
         await poll_trigger(uuid.UUID(job.payload["trigger_id"]))
+        return False
 
     # -- loop -----------------------------------------------------------------------------------
 
@@ -147,10 +155,11 @@ class Worker:
             if handler is None:
                 raise RuntimeError(f"No handler for job kind {job.kind!r}")
             with tracer.start_as_current_span(f"job {job.kind}", attributes={"flowforge.job_id": job.id}):
-                await handler(job)
-            async with get_sessionmaker()() as session:
-                await queue.complete(session, job.id, self.worker_id)
-                await session.commit()
+                completed = await handler(job)
+            if not completed:
+                async with get_sessionmaker()() as session:
+                    await queue.complete(session, job.id, self.worker_id)
+                    await session.commit()
             JOBS_PROCESSED.labels(job.kind, "ok").inc()
         except asyncio.CancelledError:
             if self._stopping.is_set():
@@ -248,6 +257,8 @@ async def main() -> None:
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_json)
     configure_tracer_provider("-worker")
+    # One pooled connection per concurrent job, plus the claim loop, heartbeats and the embedded scheduler.
+    configure_pool(settings.worker_concurrency + 8, pre_ping=False)
     if settings.metrics_enabled:
         from prometheus_client import start_http_server
 

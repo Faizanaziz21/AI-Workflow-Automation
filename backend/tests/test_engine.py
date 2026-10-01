@@ -42,6 +42,18 @@ async def test_linear_execution_with_expressions(client, tenant):
     assert types[0] == "execution_created" and "node_completed" in types and types[-1] == "execution_completed"
 
 
+async def test_jobs_complete_in_the_state_transaction(client, tenant):
+    """Advance and node jobs are deleted in the transaction that commits their state change: nothing is left
+    claimed or queued once an execution finishes."""
+    wf = await publish(client, tenant, linear(("a", "logic.set_variable", {"assignments": {"x": 1}})))
+    ex_id = await run(client, tenant, wf, {})
+    await drain()
+    assert (await get_execution(client, tenant, ex_id))["status"] == "COMPLETED"
+    async with get_sessionmaker()() as session:
+        left = (await session.execute(select(Job.kind, Job.status).where(Job.execution_id == ex_id))).all()
+    assert left == []
+
+
 async def test_if_branching_skip_propagation_and_merge(client, tenant):
     d = definition(
         [
@@ -482,3 +494,28 @@ async def test_execution_isolation(client, tenant, make_tenant):
     assert all(i["id"] != ex_id for i in listing["items"])
     r = await client.post(other.ws(f"/workflows/{wf}/run"), headers=other.headers, json={"input": {}})
     assert r.status_code == 404
+
+
+async def test_dedupe_enqueue_blocks_claim_until_commit():
+    """Lost-wakeup regression: coalescing onto a queued job must keep it unclaimable until the enqueuing
+    transaction commits, otherwise a worker can run it against state that is not yet visible."""
+    sm = get_sessionmaker()
+    q = "race-test"
+    async with sm() as s:
+        await queue.enqueue(s, "execution.advance", {"n": 1}, dedupe_key="race:1", queue=q)
+        await s.commit()
+    writer = sm()
+    try:
+        await queue.enqueue(writer, "execution.advance", {"n": 1}, dedupe_key="race:1", queue=q)  # not committed
+        async with sm() as s:
+            assert await queue.claim(s, "w-race", limit=5, lease_seconds=30, queues=[q]) == []
+            await s.rollback()
+        await writer.commit()
+    finally:
+        await writer.close()
+    async with sm() as s:
+        claimed = await queue.claim(s, "w-race", limit=5, lease_seconds=30, queues=[q])
+        assert len(claimed) == 1  # coalesced: still exactly one job
+        for job in claimed:
+            await queue.complete(s, job.id, "w-race")
+        await s.commit()

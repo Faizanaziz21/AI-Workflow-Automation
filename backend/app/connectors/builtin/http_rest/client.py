@@ -9,6 +9,7 @@ import httpx
 
 from app.connectors.builtin.http_rest.schemas import RequestInput, RequestOutput
 from app.connectors.sdk import ConnectorError, raise_for_status
+from app.core.egress import EgressDeniedError
 
 _RESPONSE_HEADER_ALLOWLIST = {
     "content-type",
@@ -58,7 +59,14 @@ async def perform_request(
     elif req.text_body is not None:
         kwargs["content"] = req.text_body.encode()
     started = time.perf_counter()
-    response = await http.request(req.method, url, **kwargs)
+    try:
+        response = await http.request(req.method, url, **kwargs)
+    except EgressDeniedError as exc:
+        raise ConnectorError(str(exc), retryable=False) from exc
+    except httpx.TimeoutException as exc:
+        raise ConnectorError(f"{service} request timed out after {req.timeout_seconds:g}s", retryable=True) from exc
+    except httpx.TransportError as exc:
+        raise ConnectorError(f"{service} transport error: {exc or type(exc).__name__}", retryable=True) from exc
     elapsed = int((time.perf_counter() - started) * 1000)
     if len(response.content) > MAX_RESPONSE_BYTES:
         raise ConnectorError(f"Response body exceeds {MAX_RESPONSE_BYTES} bytes", retryable=False)

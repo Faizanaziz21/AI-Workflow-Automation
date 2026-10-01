@@ -25,6 +25,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
 from pydantic import ValidationError
 from sqlalchemy import select
 
@@ -276,6 +277,14 @@ def _error_dict(exc: BaseException, attempt: int, secret_values: list[str]) -> d
         }
     elif isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
         err = {"type": "Timeout", "message": "Node exceeded its timeout", "retryable": True, "code": "timeout"}
+    elif isinstance(exc, httpx.TransportError):
+        # Network-level failures from code paths that call httpx directly are transient by nature.
+        err = {
+            "type": type(exc).__name__,
+            "message": f"Transport error: {exc or type(exc).__name__}",
+            "retryable": True,
+            "code": "transport_error",
+        }
     elif isinstance(exc, ExpressionError):
         err = {
             "type": "ExpressionError",
@@ -317,7 +326,12 @@ def _cap_output(output: Any, limit: int) -> Any:
 # ----------------------------------------------------------------------------- job handler
 
 
-async def run_node(payload: dict[str, Any], worker_id: str) -> None:
+async def run_node(payload: dict[str, Any], worker_id: str, job_id: int | None = None) -> bool:
+    """Run one node attempt.
+
+    When ``job_id`` is given, the job is deleted in the same transaction that persists the result. Returns True
+    in that case, so the worker does not need a separate completion round trip.
+    """
     run_id = uuid.UUID(payload["node_run_id"])
     resume: dict[str, Any] | None = payload.get("resume")
     timer_seq: int | None = payload.get("wait_seq")
@@ -329,33 +343,33 @@ async def run_node(payload: dict[str, Any], worker_id: str) -> None:
             await session.execute(select(NodeRun).where(NodeRun.id == run_id).with_for_update())
         ).scalar_one_or_none()
         if run is None:
-            return
+            return False
         ex = await session.get(Execution, run.execution_id)
         if ex is None:
-            return
+            return False
         if ex.cancel_requested or ex.status in ("COMPLETED", "FAILED", "CANCELLED"):
             if run.status not in (S.COMPLETED.value, S.FAILED.value, S.SKIPPED.value, S.CANCELLED.value):
                 run.status = S.CANCELLED.value
                 run.finished_at = datetime.now(UTC)
                 await session.commit()
-            return
+            return False
         state = dict(run.state or {})
         if resume is not None:
             waiting = run.status in (S.WAITING.value, S.WAITING_APPROVAL.value)
             redelivered = run.status == S.RUNNING.value and state.get("resume") == resume
             if not (waiting or redelivered):
-                return  # stale resume (already resumed / finished)
+                return False  # stale resume (already resumed / finished)
             if (
                 resume.get("reason") == "timer"
                 and waiting
                 and timer_seq is not None
                 and state.get("wait_seq") != timer_seq
             ):
-                return  # timer from an earlier wait
+                return False  # timer from an earlier wait
             state["resume"] = resume
             run.state = state
         elif run.status not in (S.SCHEDULED.value, S.RETRYING.value, S.RUNNING.value):
-            return  # duplicate delivery of an already-finished node
+            return False  # duplicate delivery of an already-finished node
         else:
             if run.status == S.RUNNING.value:
                 executor.add_event(
@@ -399,14 +413,20 @@ async def run_node(payload: dict[str, Any], worker_id: str) -> None:
     ):
         token = execution_id_var.set(str(ex.id))
         try:
-            await _execute_and_persist(sm, ex, run, resume, attempt, worker_id)
+            return await _execute_and_persist(sm, ex, run, resume, attempt, worker_id, job_id)
         finally:
             execution_id_var.reset(token)
 
 
 async def _execute_and_persist(
-    sm: Any, ex: Execution, run: NodeRun, resume: dict[str, Any] | None, attempt: int, worker_id: str
-) -> None:
+    sm: Any,
+    ex: Execution,
+    run: NodeRun,
+    resume: dict[str, Any] | None,
+    attempt: int,
+    worker_id: str,
+    job_id: int | None,
+) -> bool:
     async with sm() as session:
         definition, graph = await executor.load_definition(session, ex.workflow_version_id)
         runs = list((await session.execute(select(NodeRun).where(NodeRun.execution_id == ex.id))).scalars().all())
@@ -457,7 +477,7 @@ async def _execute_and_persist(
         ).scalar_one_or_none()
         ex_now = await session.get(Execution, ex.id)
         if current is None or ex_now is None or current.status != S.RUNNING.value or current.worker_id != worker_id:
-            return  # cancelled / replayed while running: discard
+            return False  # cancelled / replayed while running: discard
         now = datetime.now(UTC)
         state = {k: v for k, v in (current.state or {}).items() if k != "resume"}
         if rendered is not None and node.type != LOOP_TYPE:
@@ -587,7 +607,10 @@ async def _execute_and_persist(
                     )
                 NODE_RUNS.labels(node.type, "failed").inc()
         await executor.enqueue_advance(session, ex_now)
+        if job_id is not None:
+            await queue.complete(session, job_id, worker_id)
         await session.commit()
+        return job_id is not None
 
 
 __all__ = ["EngineRuntime", "build_data", "render_config", "run_node"]

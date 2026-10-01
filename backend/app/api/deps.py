@@ -31,7 +31,9 @@ async def get_session() -> AsyncIterator[AsyncSession]:
             raise
 
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
+# scope="function": commit before the response is sent, so a client (possibly routed to another replica)
+# always observes its own writes, and a failed commit surfaces as an error instead of a lost write.
+SessionDep = Annotated[AsyncSession, Depends(get_session, scope="function")]
 
 
 async def get_principal(

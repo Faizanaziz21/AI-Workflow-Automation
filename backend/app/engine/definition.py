@@ -82,9 +82,6 @@ class WorkflowSettings(BaseModel):
     default_retry: RetryPolicy = Field(default_factory=RetryPolicy)
     default_node_timeout_seconds: float | None = Field(default=None, gt=0, le=86400)
     mask_fields: list[str] = Field(default_factory=list, description="Extra output keys to mask in the inspector")
-    concurrency_key: str | None = Field(
-        default=None, description="Expression; executions sharing the value run one at a time (FIFO)"
-    )
 
 
 class WorkflowDefinition(BaseModel):

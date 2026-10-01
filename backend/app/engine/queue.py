@@ -72,9 +72,14 @@ async def enqueue(
     }
     stmt = insert(Job).values(**values)
     if dedupe_key:
-        stmt = stmt.on_conflict_do_nothing(
+        # Coalesce with an already-queued job by *updating* it rather than skipping the insert: the update
+        # row-locks that job until this transaction commits, and workers claim with SKIP LOCKED, so the job
+        # cannot run against state this transaction has not committed yet. (With DO NOTHING, a worker could
+        # claim and run the queued advance in that window, see stale node state, and the wake-up was lost.)
+        stmt = stmt.on_conflict_do_update(
             index_elements=["dedupe_key"],
             index_where=text("dedupe_key IS NOT NULL AND status = 'queued'"),
+            set_={"available_at": func.least(Job.available_at, stmt.excluded.available_at), "updated_at": now},
         )
     result = await session.execute(stmt.returning(Job.id))
     job_id = result.scalar_one_or_none()

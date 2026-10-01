@@ -134,3 +134,10 @@ async def test_operator_cannot_manage_users(client, tenant):
         json={"email": "x@example.com", "full_name": "X", "password": PASSWORD, "role": "viewer"},
     )
     assert r.status_code == 403
+
+
+def test_session_commits_before_response():
+    """Read-your-writes across replicas: the request transaction must commit before the response is sent."""
+    from app.api.deps import SessionDep
+
+    assert SessionDep.__metadata__[0].scope == "function"

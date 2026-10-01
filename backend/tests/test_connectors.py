@@ -293,3 +293,26 @@ async def test_egress_policy_blocks_private_addresses(monkeypatch):
     async with httpx.AsyncClient(transport=EgressPolicyTransport()) as client:
         with pytest.raises(httpx.ConnectError):  # allowed by policy, nothing listening on the port
             await client.get("http://127.0.0.1:1/")
+
+
+@pytest.mark.parametrize(
+    ("exc", "fragment"),
+    [(httpx.ReadTimeout("slow"), "timed out"), (httpx.ConnectError("refused"), "transport error")],
+)
+@respx.mock
+async def test_http_transport_failures_are_retryable(exc, fragment):
+    from app.connectors.builtin.http_rest.client import perform_request
+    from app.connectors.builtin.http_rest.schemas import RequestInput
+
+    respx.get("https://api.example.com/x").mock(side_effect=exc)
+    async with httpx.AsyncClient() as http:
+        with pytest.raises(ConnectorError) as info:
+            await perform_request(http, "https://api.example.com/x", RequestInput(path="/x"))
+    assert info.value.retryable is True and fragment in info.value.message
+
+
+def test_runner_classifies_raw_transport_errors_as_retryable():
+    from app.engine.runner import _error_dict
+
+    err = _error_dict(httpx.ReadTimeout(""), attempt=1, secret_values=[])
+    assert err["retryable"] is True and err["code"] == "transport_error"

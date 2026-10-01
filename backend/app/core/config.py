@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Database / cache
     database_url: str = "postgresql+asyncpg://flowforge:flowforge@localhost:5432/flowforge"
-    db_pool_size: int = 20
+    db_pool_size: int = 30
     db_max_overflow: int = 20
     redis_url: str = "redis://localhost:6379/0"
 
