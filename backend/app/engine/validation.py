@@ -102,6 +102,9 @@ def validate_definition(raw: dict[str, Any] | WorkflowDefinition) -> ValidationR
                 if any(_contains_template(_value_at(node.config, loc[:i])) for i in range(1, len(loc))):
                     continue
                 issues.append(Issue("error", err["msg"], node_id=node.id, field=".".join(str(p) for p in loc)))
+        conn_field = nt.config_model.model_fields.get("connection_id")
+        if conn_field is not None and conn_field.is_required() and not node.config.get("connection_id"):
+            issues.append(Issue("error", "Select a connection", node_id=node.id, field="connection_id"))
         for msg in nt.semantic_errors(node.config, node):
             issues.append(Issue("error", msg, node_id=node.id))
         for expr in extract_expressions(node.config):

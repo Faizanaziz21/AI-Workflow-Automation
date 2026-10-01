@@ -35,6 +35,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     settings.assert_production_safe()
     get_engine()
+    if settings.seed_templates:
+        from app.services.bootstrap import bootstrap
+
+        try:
+            await bootstrap()
+        except Exception:
+            logger.exception("bootstrap failed")
     yield
     await close_redis()
     await dispose_engine()
