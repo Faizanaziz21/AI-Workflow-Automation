@@ -421,7 +421,7 @@ class Job(Base):
             "uq_jobs_dedupe",
             "dedupe_key",
             unique=True,
-            postgresql_where=text("dedupe_key IS NOT NULL AND status IN ('queued','running')"),
+            postgresql_where=text("dedupe_key IS NOT NULL AND status = 'queued'"),
         ),
         Index("ix_jobs_execution", "execution_id"),
     )

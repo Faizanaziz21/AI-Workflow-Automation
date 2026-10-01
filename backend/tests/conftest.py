@@ -139,3 +139,69 @@ async def add_user(client: httpx.AsyncClient, tenant: Tenant, role: str, workspa
     assert r.status_code == 201, r.text
     tokens = await login(client, email)
     return {"id": r.json()["id"], "email": email, "headers": {"Authorization": f"Bearer {tokens['access_token']}"}}
+
+
+# ----------------------------------------------------------------------------- engine helpers
+
+
+async def drain(max_seconds: float = 20.0) -> None:
+    """Process queued jobs in-process until the queue is idle (only jobs already due)."""
+    import asyncio
+
+    from app.workers.worker import Worker
+
+    worker = Worker(concurrency=8, worker_id="test-worker", grace_seconds=5)
+    await asyncio.wait_for(worker.run(stop_when_idle=True, idle_timeout=0.3), timeout=max_seconds)
+
+
+async def fast_forward(execution_id: str | None = None) -> None:
+    """Make delayed jobs (timers, retries) due now."""
+    from sqlalchemy import text
+
+    from app.db.session import get_sessionmaker
+
+    async with get_sessionmaker()() as s:
+        if execution_id:
+            await s.execute(
+                text(
+                    "UPDATE jobs SET available_at = now() WHERE status='queued' AND execution_id = :e "
+                    "AND kind <> 'execution.timeout'"
+                ),
+                {"e": execution_id},
+            )
+        else:
+            await s.execute(
+                text("UPDATE jobs SET available_at = now() WHERE status='queued' AND kind <> 'execution.timeout'")
+            )
+        await s.commit()
+
+
+async def publish(client, tenant, definition: dict, name: str = "wf") -> str:
+    r = await client.post(
+        tenant.ws("/workflows"), headers=tenant.headers, json={"name": name, "definition": definition}
+    )
+    assert r.status_code == 201, r.text
+    wf_id = r.json()["id"]
+    r = await client.post(tenant.ws(f"/workflows/{wf_id}/publish"), headers=tenant.headers, json={})
+    assert r.status_code == 200, r.text
+    return wf_id
+
+
+async def run(client, tenant, wf_id: str, payload: dict | None = None, headers: dict | None = None, **extra) -> str:
+    r = await client.post(
+        tenant.ws(f"/workflows/{wf_id}/run"), headers=headers or tenant.headers, json={"input": payload or {}, **extra}
+    )
+    assert r.status_code == 202, r.text
+    return r.json()["execution_id"]
+
+
+async def get_execution(client, tenant, ex_id: str) -> dict:
+    r = await client.get(f"/api/v1/executions/{ex_id}", headers=tenant.headers)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+async def node_runs(client, tenant, ex_id: str) -> dict[str, dict]:
+    r = await client.get(f"/api/v1/executions/{ex_id}/nodes", headers=tenant.headers)
+    assert r.status_code == 200, r.text
+    return {(n["node_id"] + (f"@{n['scope']}" if n["scope"] else "")): n for n in r.json()}
