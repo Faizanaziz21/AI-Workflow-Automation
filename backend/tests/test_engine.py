@@ -519,3 +519,58 @@ async def test_dedupe_enqueue_blocks_claim_until_commit():
         for job in claimed:
             await queue.complete(s, job.id, "w-race")
         await s.commit()
+
+
+async def test_wakeup_notification_is_sent_after_commit_only():
+    """NOTIFY must not run inside the enqueuing transaction (it serialises commits); it is sent after commit."""
+    import asyncpg
+
+    from app.workers.worker import asyncpg_dsn
+
+    got: list[str] = []
+    received = asyncio.Event()
+    listener = await asyncpg.connect(asyncpg_dsn())
+    await listener.add_listener(queue.NOTIFY_CHANNEL, lambda *args: (got.append(args[3]), received.set()))
+    try:
+        async with get_sessionmaker()() as s:
+            await queue.enqueue(s, "execution.advance", {}, queue="notify-test")
+            await asyncio.sleep(0.1)
+            assert got == []  # nothing before commit
+            await s.commit()
+        await asyncio.wait_for(received.wait(), timeout=2)
+        assert "notify-test" in got
+    finally:
+        await listener.close()
+        async with get_sessionmaker()() as s:
+            await s.execute(text("DELETE FROM jobs WHERE queue = 'notify-test'"))
+            await s.commit()
+
+
+async def test_stalled_execution_sweep_recovers_lost_wakeup(client, tenant):
+    from app.engine import executor
+
+    wf = await publish(client, tenant, linear(("a", "logic.set_variable", {"assignments": {"x": 1}})))
+    ex_id = await run(client, tenant, wf, {})
+    async with get_sessionmaker()() as s:  # simulate a lost wake-up: the pending advance disappears
+        await s.execute(text("DELETE FROM jobs WHERE execution_id = :e AND kind <> 'execution.timeout'"), {"e": ex_id})
+        await s.execute(
+            text("UPDATE executions SET created_at = now() - interval '5 minutes' WHERE id = :e"), {"e": ex_id}
+        )
+        await s.execute(
+            text(
+                "UPDATE node_runs SET scheduled_at = now() - interval '5 minutes', "
+                "started_at = now() - interval '5 minutes', finished_at = now() - interval '5 minutes' "
+                "WHERE execution_id = :e"
+            ),
+            {"e": ex_id},
+        )
+        await s.commit()
+    await drain()
+    assert (await get_execution(client, tenant, ex_id))["status"] == "RUNNING"  # stuck without the sweep
+    async with get_sessionmaker()() as s:
+        assert await executor.recover_stalled(s) >= 1
+        await s.commit()
+    await drain()
+    assert (await get_execution(client, tenant, ex_id))["status"] == "COMPLETED"
+    async with get_sessionmaker()() as s:  # healthy executions are left alone
+        assert await executor.recover_stalled(s) == 0

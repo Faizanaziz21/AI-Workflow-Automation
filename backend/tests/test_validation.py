@@ -106,3 +106,16 @@ def test_schedule_semantic_validation():
 def test_approval_requires_approvers():
     _, errors = messages(linear(("ap", "human.approval", {"title": "Approve?"})))
     assert any("approver" in e for e in errors)
+
+
+def test_stored_definitions_with_retired_null_setting_still_load():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.engine.definition import WorkflowDefinition
+
+    base = {"nodes": [{"id": "t", "type": "trigger.manual"}], "edges": []}
+    d = WorkflowDefinition.model_validate({**base, "settings": {"concurrency_key": None}})
+    assert "concurrency_key" not in d.settings.model_dump()
+    with pytest.raises(ValidationError):
+        WorkflowDefinition.model_validate({**base, "settings": {"concurrency_key": "{{ trigger.id }}"}})

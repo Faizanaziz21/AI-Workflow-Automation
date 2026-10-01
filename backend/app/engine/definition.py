@@ -6,7 +6,7 @@ import hashlib
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 NODE_ID_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]{0,63}$"
 
@@ -76,6 +76,14 @@ class EdgeDef(BaseModel):
 
 class WorkflowSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired_fields(cls, data: Any) -> Any:
+        # Versions stored before the unimplemented ``concurrency_key`` setting was removed carry it as null.
+        if isinstance(data, dict) and "concurrency_key" in data and data["concurrency_key"] is None:
+            return {k: v for k, v in data.items() if k != "concurrency_key"}
+        return data
 
     execution_timeout_seconds: int | None = Field(default=None, ge=1, le=60 * 60 * 24 * 90)
     max_parallel_nodes: int = Field(default=16, ge=1, le=256)

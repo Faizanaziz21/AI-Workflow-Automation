@@ -321,6 +321,7 @@ class Execution(IdMixin, Base):
         UniqueConstraint("workflow_id", "idempotency_key"),
         Index("ix_exec_org_created", "org_id", "created_at"),
         Index("ix_exec_org_status", "org_id", "status"),
+        Index("ix_exec_active_created", "created_at", postgresql_where=text("status IN ('RUNNING', 'RETRYING')")),
         Index("ix_exec_workflow_created", "workflow_id", "created_at"),
         Index("ix_exec_correlation", "org_id", "correlation_key", postgresql_where=text("correlation_key IS NOT NULL")),
     )

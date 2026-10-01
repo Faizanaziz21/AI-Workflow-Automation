@@ -4,7 +4,8 @@ Any number of replicas may run; a PostgreSQL advisory lock elects one leader tha
 
 * reaps expired job leases (recovering work from crashed workers),
 * fires due cron triggers exactly once per tick (row locks + idempotency keys),
-* enqueues due connector-polling triggers (IMAP, database CDC, Google Drive),
+* enqueues due connector-polling triggers (IMAP, database CDC, Google Drive, App triggers),
+* re-advances stalled executions (active, but with no pending work) as a self-healing safety net,
 * publishes queue-depth gauges.
 
 It can run embedded in a worker (default) or standalone: ``python -m app.workers.scheduler``.
@@ -23,7 +24,7 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.metrics import QUEUE_DEPTH
 from app.db.session import get_sessionmaker
-from app.engine import queue
+from app.engine import executor, queue
 from app.services.triggers import enqueue_due_polls, fire_due_schedules
 from app.workers.worker import asyncpg_dsn
 
@@ -36,6 +37,7 @@ class Scheduler:
         self.interval = interval
         self._stopping = asyncio.Event()
         self.is_leader = False
+        self._ticks = 0
 
     def stop(self) -> None:
         self._stopping.set()
@@ -52,6 +54,13 @@ class Scheduler:
         async with sm() as session:
             stats["polls"] = await enqueue_due_polls(session)
             await session.commit()
+        self._ticks += 1
+        if self._ticks % 30 == 1:  # roughly every 30 s
+            async with sm() as session:
+                stats["stalled"] = await executor.recover_stalled(session)
+                await session.commit()
+            if stats["stalled"]:
+                logger.warning("re-advanced %s stalled executions", stats["stalled"])
         if stats["reaped"]:
             logger.warning("recovered %s jobs with expired leases", stats["reaped"])
         return stats

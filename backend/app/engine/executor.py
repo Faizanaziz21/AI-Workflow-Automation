@@ -22,7 +22,7 @@ from collections import OrderedDict, defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -525,6 +525,38 @@ async def push_webhook_response(execution_id: uuid.UUID, response: dict[str, Any
 
 
 # ----------------------------------------------------------------------------- operator actions
+
+
+async def recover_stalled(session: AsyncSession, *, idle_seconds: int = 60, limit: int = 200) -> int:
+    """Self-healing sweep: re-advance active executions that have no pending work.
+
+    An execution that is RUNNING/RETRYING, not paused, has no queued or running job besides its deadline timer
+    and no node activity for ``idle_seconds`` cannot make progress on its own. ``advance`` is idempotent, so
+    enqueueing one is always safe; it either schedules the missing work or finishes the execution.
+    """
+    rows = (
+        await session.execute(
+            text("""
+        SELECT e.id FROM executions e
+        WHERE e.status IN ('RUNNING', 'RETRYING') AND NOT e.is_paused AND NOT e.cancel_requested
+          AND e.created_at < now() - make_interval(secs => :idle)
+          AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.execution_id = e.id AND j.kind <> :timeout_kind)
+          AND NOT EXISTS (
+              SELECT 1 FROM node_runs n WHERE n.execution_id = e.id
+                AND (n.status IN ('SCHEDULED', 'RUNNING')
+                     OR coalesce(n.finished_at, n.started_at, n.scheduled_at) > now() - make_interval(secs => :idle)))
+        LIMIT :limit
+    """),
+            {"idle": idle_seconds, "timeout_kind": JOB_TIMEOUT, "limit": limit},
+        )
+    ).all()
+    for (execution_id,) in rows:
+        ex = await session.get(Execution, execution_id)
+        if ex is None:
+            continue
+        add_event(session, ex, "execution_recovered", "Re-advanced by the stalled-execution sweep", level="warning")
+        await enqueue_advance(session, ex)
+    return len(rows)
 
 
 async def lock_execution(session: AsyncSession, org_id: uuid.UUID, execution_id: uuid.UUID) -> Execution | None:

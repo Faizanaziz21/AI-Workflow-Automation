@@ -6,26 +6,91 @@
   lease (``locked_until``). Workers heartbeat to extend leases while a job runs.
 * ``reap_expired`` returns jobs whose lease expired (worker crashed / was killed) to the queue — this is the
   crash-recovery path. Jobs exceeding ``max_attempts`` are moved to the dead-letter table.
-* ``pg_notify('flowforge_jobs')`` wakes idle workers immediately; polling is the fallback.
+* ``pg_notify('flowforge_jobs')`` wakes idle workers immediately; polling is the fallback. Notifications are sent
+  *after* commit, coalesced per process, from a separate autocommit connection: a NOTIFY issued inside the
+  transaction makes PostgreSQL take a global lock at commit, which serialises every enqueuing transaction.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import delete, event, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.db.enums import JobStatus
 from app.db.models import DeadLetter, Job
 
+logger = logging.getLogger(__name__)
+
 NOTIFY_CHANNEL = "flowforge_jobs"
 DEFAULT_QUEUE = "default"
+_NOTIFY_KEY = "flowforge_notify_queues"
+
+
+class _Notifier:
+    """Coalesces post-commit wake-ups into one ``pg_notify`` per queue per few milliseconds."""
+
+    def __init__(self) -> None:
+        self.pending: set[str] = set()
+        self.event: asyncio.Event | None = None
+        self.task: asyncio.Task[None] | None = None
+        self.loop: asyncio.AbstractEventLoop | None = None
+
+    def request(self, queues: set[str]) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # no event loop (sync context): workers fall back to polling
+        if self.loop is not loop or self.task is None or self.task.done():
+            self.loop, self.event = loop, asyncio.Event()
+            self.task = loop.create_task(self._run(), name="flowforge-queue-notifier")
+        self.pending |= queues
+        assert self.event is not None
+        self.event.set()
+
+    async def _run(self) -> None:
+        from app.db.session import get_engine
+
+        event = self.event
+        assert event is not None
+        while True:
+            await event.wait()
+            event.clear()
+            await asyncio.sleep(0.002)  # let concurrent commits join this batch
+            queues, self.pending = self.pending, set()
+            try:
+                async with get_engine().connect() as conn:
+                    conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
+                    for q in sorted(queues):
+                        await conn.execute(text("SELECT pg_notify(:ch, :q)"), {"ch": NOTIFY_CHANNEL, "q": q})
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # wake-ups are an optimisation; workers also poll
+                logger.warning("queue notification failed; workers will pick the jobs up by polling", exc_info=True)
+
+
+_notifier = _Notifier()
+
+
+@event.listens_for(Session, "after_commit")
+def _notify_after_commit(session: Session) -> None:
+    queues = session.info.pop(_NOTIFY_KEY, None)
+    if queues:
+        _notifier.request(queues)
+
+
+@event.listens_for(Session, "after_rollback")
+def _drop_notifications(session: Session) -> None:
+    session.info.pop(_NOTIFY_KEY, None)
 
 
 @dataclass
@@ -84,7 +149,7 @@ async def enqueue(
     result = await session.execute(stmt.returning(Job.id))
     job_id = result.scalar_one_or_none()
     if job_id is not None and notify and (available_at is None or available_at <= now):
-        await session.execute(text("SELECT pg_notify(:ch, :payload)"), {"ch": NOTIFY_CHANNEL, "payload": queue})
+        session.info.setdefault(_NOTIFY_KEY, set()).add(queue)  # sent after commit (see _Notifier)
     return job_id
 
 
