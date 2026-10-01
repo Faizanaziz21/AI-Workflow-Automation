@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flowforge
+labels:
+  - pairs: { app.kubernetes.io/part-of: flowforge }
+resources:
+  - namespace.yaml
+  - config.yaml
+  - migrate-job.yaml
+  - api.yaml
+  - worker.yaml
+  - scheduler.yaml
+  - web.yaml
+  - ingress.yaml
+  - network-policies.yaml
+images:
+  - name: flowforge/backend
+    newTag: latest
+  - name: flowforge/web
+    newTag: latest

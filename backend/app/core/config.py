@@ -5,10 +5,10 @@ from __future__ import annotations
 import base64
 import json
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     active_encryption_key: str = "v1"
 
     # HTTP
-    cors_origins: list[str] = ["http://localhost:3000"]
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
     public_base_url: str = "http://localhost:8000"
     trusted_proxies: int = 1
 
@@ -62,7 +62,7 @@ class Settings(BaseSettings):
 
     # Egress (SSRF) policy for HTTP-calling nodes
     allow_private_network_egress: bool = False
-    egress_allowlist: list[str] = []
+    egress_allowlist: Annotated[list[str], NoDecode] = []
 
     # Storage
     storage_dir: str = "./storage"
@@ -79,7 +79,9 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", "egress_allowlist", mode="before")
     @classmethod
     def _split_csv(cls, v: object) -> object:
-        if isinstance(v, str) and not v.startswith("["):
+        if isinstance(v, str):
+            if v.strip().startswith("["):
+                return json.loads(v)
             return [s.strip() for s in v.split(",") if s.strip()]
         return v
 

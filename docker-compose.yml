@@ -1,0 +1,137 @@
+# FlowForge AI — development / demo stack.
+#   docker compose up -d --build            # core platform on http://localhost:8080
+#   docker compose --profile demo up seed   # demo org, sandbox connections, templates, sample runs
+#   docker compose --profile tracing up -d  # + OpenTelemetry collector and Jaeger (http://localhost:16686)
+x-backend: &backend
+  build: ./backend
+  image: flowforge/backend:dev
+  env_file: .env
+  environment: &backend-env
+    FF_DATABASE_URL: postgresql+asyncpg://flowforge:${POSTGRES_PASSWORD:-flowforge}@postgres:5432/flowforge
+    FF_REDIS_URL: redis://redis:6379/0
+    FF_STORAGE_DIR: /data/storage
+    FF_TRUSTED_PROXIES: "1"
+  volumes: [storage:/data/storage]
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    migrate: { condition: service_completed_successfully }
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: flowforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flowforge}
+      POSTGRES_DB: flowforge
+    command: ["postgres", "-c", "max_connections=300", "-c", "shared_buffers=256MB"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U flowforge"], interval: 5s, timeout: 3s, retries: 20 }
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes: [redisdata:/data]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 20 }
+    restart: unless-stopped
+
+  migrate:
+    build: ./backend
+    image: flowforge/backend:dev
+    env_file: .env
+    environment:
+      FF_DATABASE_URL: postgresql+asyncpg://flowforge:${POSTGRES_PASSWORD:-flowforge}@postgres:5432/flowforge
+    command: ["alembic", "upgrade", "head"]
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+
+  api:
+    <<: *backend
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*", "--workers", "1"]
+    expose: ["8000"]
+    deploy: { replicas: 2 }   # one process per container keeps Prometheus metrics per-target
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.workers.worker"]
+    environment:
+      <<: *backend-env
+      FF_EMBEDDED_SCHEDULER: "false"
+      FF_WORKER_CONCURRENCY: "32"
+    deploy: { replicas: 2 }
+    stop_grace_period: 40s
+    healthcheck: { disable: true }
+
+  scheduler:
+    <<: *backend
+    command: ["python", "-m", "app.workers.scheduler"]
+    healthcheck: { disable: true }
+
+  web:
+    build: ./frontend
+    image: flowforge/web:dev
+    environment: { FF_API_URL: "http://api:8000" }
+    depends_on: [api]
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports: ["8080:80"]
+    volumes: ["./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"]
+    depends_on: [api, web]
+    restart: unless-stopped
+
+  sandbox:
+    build: ./mock-services
+    image: flowforge/sandbox:dev
+    expose: ["9000"]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
+    volumes:
+      - ./deploy/prometheus:/etc/prometheus:ro
+      - promdata:/prometheus
+    ports: ["9090:9090"]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3001:3000"]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+  seed:
+    <<: *backend
+    profiles: ["demo"]
+    command: ["python", "-m", "app.cli", "seed-demo", "--sandbox-url", "http://sandbox:9000", "--executions", "40"]
+    restart: "no"
+    depends_on:
+      api: { condition: service_started }
+      sandbox: { condition: service_started }
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.108.0
+    profiles: ["tracing"]
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes: ["./deploy/otel/config.yaml:/etc/otel/config.yaml:ro"]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    profiles: ["tracing"]
+    ports: ["16686:16686"]
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:
+  promdata:

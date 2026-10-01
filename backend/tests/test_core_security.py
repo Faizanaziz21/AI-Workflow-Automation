@@ -86,3 +86,13 @@ def test_rbac_matrix():
     assert can_grant({Role.ORG_ADMIN}, Role.WORKFLOW_DEVELOPER)
     assert not can_grant({Role.ORG_ADMIN}, Role.SUPER_ADMIN)
     assert not can_grant({Role.WORKFLOW_DEVELOPER}, Role.VIEWER)
+
+
+def test_settings_parse_list_env(monkeypatch):
+    from app.core.config import Settings
+
+    monkeypatch.setenv("FF_CORS_ORIGINS", "https://a.example, https://b.example")
+    monkeypatch.setenv("FF_EGRESS_ALLOWLIST", '["*.corp.internal"]')
+    s = Settings()
+    assert s.cors_origins == ["https://a.example", "https://b.example"]
+    assert s.egress_allowlist == ["*.corp.internal"]

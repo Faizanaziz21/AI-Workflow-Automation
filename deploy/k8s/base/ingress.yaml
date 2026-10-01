@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flowforge
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 26m
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: nginx
+  tls: [{ hosts: [flowforge.example.com], secretName: flowforge-tls }]
+  rules:
+    - host: flowforge.example.com
+      http:
+        paths:
+          - { path: /api, pathType: Prefix, backend: { service: { name: api, port: { number: 8000 } } } }
+          - { path: /, pathType: Prefix, backend: { service: { name: web, port: { number: 3000 } } } }
