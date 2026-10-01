@@ -208,3 +208,77 @@ async def test_db_change_polling_trigger(client, tenant):
     for item in listing["items"]:
         customers.add((await node_runs(client, tenant, item["id"]))["seen"]["output"]["customer"])
     assert customers == {"Initech", "Globex"}
+
+
+async def test_app_event_trigger_polls_any_connector_trigger(client, tenant):
+    """The generic App trigger runs a connector-declared polling trigger (HubSpot new_contacts here)."""
+    import httpx
+    import respx
+
+    from app.workers.scheduler import Scheduler
+
+    contact = {
+        "id": "901",
+        "properties": {"email": "nia@globex.com", "firstname": "Nia", "createdate": "2030-01-01T00:00:00Z"},
+    }
+    conn = (
+        await client.post(
+            tenant.ws("/connections"),
+            headers=tenant.headers,
+            json={
+                "name": "CRM",
+                "connector_key": "hubspot",
+                "config": {"api_base_url": "https://crm.test", "portal_id": "1"},
+                "credentials": {"access_token": "pat-test"},
+            },
+        )
+    ).json()
+    d = linear(
+        ("seen", "logic.set_variable", {"assignments": {"email": "{{ trigger.email }}"}}),
+        trigger="trigger.app_event",
+        trigger_config={
+            "connection_id": conn["id"],
+            "event": "new_contacts",
+            "settings": {"batch_size": 10},
+            "poll_interval_seconds": 15,
+        },
+    )
+    wf = await publish(client, tenant, d)
+    with respx.mock(assert_all_called=True) as router:
+        search = router.post("https://crm.test/crm/v3/objects/contacts/search").mock(
+            side_effect=[httpx.Response(200, json={"results": []}), httpx.Response(200, json={"results": [contact]})]
+        )
+        await Scheduler().tick()  # first poll establishes the cursor
+        await drain()
+        async with get_sessionmaker()() as s:
+            await s.execute(text("UPDATE workflow_triggers SET next_run_at = now() WHERE workflow_id = :w"), {"w": wf})
+            await s.commit()
+        await Scheduler().tick()
+        await drain()
+    assert search.call_count == 2
+    assert json.loads(search.calls[1].request.content)["limit"] == 10
+    listing = (await client.get("/api/v1/executions", headers=tenant.headers, params={"workflow_id": wf})).json()
+    assert [i["trigger_type"] for i in listing["items"]] == ["app_event"]
+    assert (await node_runs(client, tenant, listing["items"][0]["id"]))["seen"]["output"] == {"email": "nia@globex.com"}
+
+
+async def test_app_event_trigger_reports_unknown_event(client, tenant):
+    from app.workers.scheduler import Scheduler
+
+    conn = (
+        await client.post(
+            tenant.ws("/connections"),
+            headers=tenant.headers,
+            json={"name": "API", "connector_key": "http_rest", "config": {"base_url": "https://api.test"}},
+        )
+    ).json()
+    d = linear(
+        ("seen", "logic.set_variable", {"assignments": {"x": 1}}),
+        trigger="trigger.app_event",
+        trigger_config={"connection_id": conn["id"], "event": "new_contacts"},
+    )
+    wf = await publish(client, tenant, d)
+    await Scheduler().tick()
+    await drain()
+    info = (await client.get(tenant.ws(f"/workflows/{wf}/trigger"), headers=tenant.headers)).json()
+    assert "has no 'new_contacts' trigger" in info["last_error"]

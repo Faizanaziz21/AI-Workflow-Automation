@@ -33,7 +33,7 @@ export default function ExecutionsPage() {
             ))}
           </Select>
           <Select className="w-44" aria-label="Trigger" value={trigger} onChange={(e) => setTrigger(e.target.value)}>
-            {["", "manual", "webhook", "schedule", "api_event", "email", "db_change", "file_uploaded", "sub_workflow"].map((t) => (
+            {["", "manual", "webhook", "schedule", "api_event", "email", "db_change", "file_uploaded", "app_event", "sub_workflow"].map((t) => (
               <option key={t} value={t}>
                 {t || "All triggers"}
               </option>

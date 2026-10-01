@@ -421,11 +421,11 @@ async def sync_trigger(
         trig.event_name = cfg["event_name"]
     elif trigger_type == "file_uploaded" and cfg.get("source", "platform") == "platform":
         trig.event_name = "file.uploaded"
-    if trigger_type in ("email", "db_change") or (
+    if trigger_type in ("email", "db_change", "app_event") or (
         trigger_type == "file_uploaded" and cfg.get("source") == "google_drive"
     ):
         trig.next_run_at = datetime.now(UTC)
-        source_keys = ("connection_id", "table", "cursor_column", "folder", "folder_id", "source")
+        source_keys = ("connection_id", "table", "cursor_column", "folder", "folder_id", "source", "event", "settings")
         if type_changed or any(previous_config.get(k) != cfg.get(k) for k in source_keys):
             trig.state = {}  # polling source changed: restart cursor
     await session.flush()

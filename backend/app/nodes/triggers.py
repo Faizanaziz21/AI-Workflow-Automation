@@ -196,6 +196,28 @@ class FileUploadedTrigger(_TriggerBase):
         return []
 
 
+class AppEventConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    connection_id: str = Field(json_schema_extra={"x-connection": True})
+    event: str = Field(
+        pattern=r"^[a-z0-9_]{1,80}$",
+        description="Trigger key declared by the connection's connector, e.g. new_contacts (HubSpot), "
+        "issues_updated (Jira), new_file (Google Drive)",
+    )
+    settings: dict[str, Any] = Field(default_factory=dict, description="Options of that connector trigger")
+    poll_interval_seconds: int = Field(default=60, ge=15, le=86400)
+
+
+class AppEventTrigger(_TriggerBase):
+    type = "trigger.app_event"
+    label = "App trigger"
+    description = "Start for each new item reported by any connector trigger (polled with a persisted cursor)."
+    icon = "plug"
+    trigger_type = "app_event"
+    config_model = AppEventConfig
+    output_schema = {"type": "object", "description": "The item emitted by the connector trigger"}
+
+
 TRIGGER_NODES: list[type[NodeType]] = [
     ManualTrigger,
     WebhookTrigger,
@@ -204,4 +226,5 @@ TRIGGER_NODES: list[type[NodeType]] = [
     ApiEventTrigger,
     DbChangeTrigger,
     FileUploadedTrigger,
+    AppEventTrigger,
 ]

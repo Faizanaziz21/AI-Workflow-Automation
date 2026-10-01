@@ -84,6 +84,7 @@ class TriggerType(StrEnum):
     API_EVENT = "api_event"
     DB_CHANGE = "db_change"
     FILE_UPLOADED = "file_uploaded"
+    APP_EVENT = "app_event"
     REPLAY = "replay"
     SUB_WORKFLOW = "sub_workflow"
 

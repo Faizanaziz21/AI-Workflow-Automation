@@ -11,6 +11,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -295,7 +296,7 @@ async def enqueue_due_polls(session: AsyncSession, limit: int = 200) -> int:
                 select(WorkflowTrigger)
                 .where(
                     WorkflowTrigger.enabled.is_(True),
-                    WorkflowTrigger.trigger_type.in_(["email", "db_change", "file_uploaded"]),
+                    WorkflowTrigger.trigger_type.in_(["email", "db_change", "file_uploaded", "app_event"]),
                     WorkflowTrigger.next_run_at.is_not(None),
                     WorkflowTrigger.next_run_at <= now,
                 )
@@ -339,13 +340,21 @@ async def poll_trigger(trigger_id: uuid.UUID) -> int:
                 select(WorkflowTrigger).where(WorkflowTrigger.id == trigger_id).with_for_update(skip_locked=True)
             )
         ).scalar_one_or_none()
-        if trig is None or not trig.enabled or trig.trigger_type not in _POLL_SOURCES:
+        if (
+            trig is None
+            or not trig.enabled
+            or (trig.trigger_type not in _POLL_SOURCES and trig.trigger_type != "app_event")
+        ):
             return 0
         wf = await session.get(Workflow, trig.workflow_id)
         if wf is None or wf.status != "active":
             return 0
         cfg = trig.config or {}
-        trigger_key, fields = _POLL_SOURCES[trig.trigger_type]
+        if trig.trigger_type == "app_event":
+            trigger_key, trigger_cfg = str(cfg.get("event", "")), dict(cfg.get("settings") or {})
+        else:
+            trigger_key, fields = _POLL_SOURCES[trig.trigger_type]
+            trigger_cfg = {k: v for k, v in cfg.items() if k in fields}
         interval = int(cfg.get("poll_interval_seconds", 60))
         started = 0
         try:
@@ -354,9 +363,7 @@ async def poll_trigger(trigger_id: uuid.UUID) -> int:
             )
             if trigger_key not in resolved.connector.triggers:
                 raise ConnectorError(f"Connector '{resolved.connector.key}' has no '{trigger_key}' trigger")
-            result = await resolved.connector.poll(
-                trigger_key, resolved.context, {k: v for k, v in cfg.items() if k in fields}, dict(trig.state or {})
-            )
+            result = await resolved.connector.poll(trigger_key, resolved.context, trigger_cfg, dict(trig.state or {}))
             items = result.items
             if trig.trigger_type == "db_change" and cfg.get("mode") == "batch" and items:
                 batches: list[dict[str, Any]] = [{"rows": items}]
@@ -373,7 +380,7 @@ async def poll_trigger(trigger_id: uuid.UUID) -> int:
             trig.state = result.state
             trig.last_error = None
             trig.next_run_at = datetime.now(UTC) + timedelta(seconds=interval)
-        except (ConnectorError, LookupError) as exc:
+        except (ConnectorError, LookupError, ValidationError) as exc:
             trig.last_error = getattr(exc, "message", str(exc))[:2000]
             trig.next_run_at = datetime.now(UTC) + timedelta(seconds=min(interval * 4, 3600))
         trig.last_run_at = datetime.now(UTC)
