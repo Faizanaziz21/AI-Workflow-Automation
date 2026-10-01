@@ -22,3 +22,6 @@ storage/
 playwright-report/
 test-results/
 loadtest/results/raw/
+frontend/test-results/
+frontend/next-env.d.ts
+*.tsbuildinfo

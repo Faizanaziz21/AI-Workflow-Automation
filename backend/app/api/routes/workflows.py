@@ -128,6 +128,26 @@ async def list_node_types(principal: PrincipalDep, category: str | None = None) 
     return [n.describe() for n in all_node_types() if category is None or n.category == category]
 
 
+class HandlesQuery(BaseModel):
+    nodes: list[dict[str, Any]] = Field(max_length=500)
+
+
+@router.post("/node-types/handles")
+async def node_handles(body: HandlesQuery, principal: PrincipalDep) -> dict[str, list[str]]:
+    """Output handles for each node given its current config (dynamic handles such as Switch cases)."""
+    out: dict[str, list[str]] = {}
+    for n in body.nodes:
+        try:
+            nt = get_node_type(str(n.get("type")))
+        except KeyError:
+            continue
+        handles = nt.handles(n.get("config") or {})
+        if n.get("on_error") == "route":
+            handles = [*handles, "error"]
+        out[str(n.get("id"))] = handles
+    return out
+
+
 @router.get("/node-types/{type_key}")
 async def get_node_type_detail(type_key: str, principal: PrincipalDep) -> dict[str, Any]:
     try:
