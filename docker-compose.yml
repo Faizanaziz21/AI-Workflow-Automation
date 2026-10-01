@@ -79,7 +79,10 @@ services:
   nginx:
     image: nginx:1.27-alpine
     ports: ["8080:80"]
-    volumes: ["./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"]
+    environment:
+      NGINX_API_RATE: ${NGINX_API_RATE:-50r/s}     # per client IP
+      NGINX_AUTH_RATE: ${NGINX_AUTH_RATE:-5r/s}
+    volumes: ["./deploy/nginx/templates:/etc/nginx/templates:ro"]
     depends_on: [api, web]
     restart: unless-stopped
 
