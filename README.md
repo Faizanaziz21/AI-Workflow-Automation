@@ -110,7 +110,20 @@ screening, incident escalation (SMS paging with acknowledgement timeout), and au
 
 ## Benchmarks
 
-<!-- BENCHMARK-TABLE -->
+The load harness (`loadtest/`) drives a deployment through its public API with **100 users, 500 workflows and
+over 6,000 executions per run**. Everything ran on one 4-vCPU VM, load generator included:
+
+| Scenario (one shared 4-vCPU host) | Result |
+|---|---|
+| 100 concurrent users, 2 min mixed load | 2,166 executions, **0 failures**, e2e p95 **1.1 s**, webhook p95 159 ms, no backlog |
+| 3,000 simultaneous webhooks | **3,000/3,000 accepted**, all completed, 31.7 executions/s sustained, backlog drained 61 s after ingest (37 s with 4 workers) |
+| 1,000 webhooks with 15% API/LLM errors, 5% 20-s hangs, +0.3–1 s latency | 704 automatic node retries, **0.6% failed** (all retries exhausted; requeueable from dead letters) |
+| Ingest only (workers stopped) | 70.9 durable webhook accepts/s, 0 errors |
+| Setup | 100 users + 500 workflows authored and published through the API in 14.2 s |
+
+The first runs uncovered real concurrency defects: a lost-wake-up race, transport errors that were never retried,
+read-your-writes across replicas, connection churn, and commit serialisation on `NOTIFY`. All are fixed and covered
+by regression tests. Details and full latency tables are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Technologies
 
