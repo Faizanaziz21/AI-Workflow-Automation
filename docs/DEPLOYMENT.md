@@ -132,6 +132,9 @@ kubectl -n flowforge wait --for=condition=complete job/flowforge-migrate --timeo
 kubectl -n flowforge rollout status deploy/api deploy/worker deploy/scheduler deploy/web
 ```
 
+Validation: `kustomize build` of the base and the production overlay passes `kubeconform -strict` against the
+Kubernetes 1.30 schemas (20 resources each). The manifests have not yet been deployed to a live cluster.
+
 Notes:
 
 * **PostgreSQL**: use a managed instance (RDS, Cloud SQL, Azure Flexible Server) with PITR backups. At more
