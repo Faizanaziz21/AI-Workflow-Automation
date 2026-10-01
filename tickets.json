@@ -1,0 +1,10 @@
+[
+  { "id": "T-1001", "from": "jane@example.com", "subject": "Refund not received",
+    "body": "I returned order #48213 two weeks ago and still haven't been charged back. This is urgent, please help." },
+  { "id": "T-1002", "from": "mike@acme.co", "subject": "App keeps crashing",
+    "body": "The desktop app crashes every time I open the reports page. Running Windows 11. Error code 0xC0000005." },
+  { "id": "T-1003", "from": "sara@example.com", "subject": "Can't log in",
+    "body": "I forgot my password and the reset email never arrives. I've been locked out since yesterday." },
+  { "id": "T-1004", "from": "tom@shop.io", "subject": "Question about pricing",
+    "body": "Do you offer annual discounts for the Pro plan? No rush, just curious." }
+]
