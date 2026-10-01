@@ -45,3 +45,10 @@ spec:
       external:
         metric: { name: flowforge_queue_depth, selector: { matchLabels: { queue: ready } } }
         target: { type: AverageValue, averageValue: "100" }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: worker }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: worker } }
