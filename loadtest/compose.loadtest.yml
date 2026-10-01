@@ -1,0 +1,19 @@
+# Benchmark overlay: all load is generated from a single client IP, so the per-IP edge and login limits
+# (which exist to stop credential stuffing) are raised; per-identity API limits stay at production defaults.
+#
+#   docker compose -f docker-compose.yml -f loadtest/compose.loadtest.yml up -d
+#   docker compose -f docker-compose.yml -f loadtest/compose.loadtest.yml up -d --scale worker=4   # scale-out run
+services:
+  api:
+    environment:
+      FF_RATE_LIMIT_AUTH: "5000"
+      FF_LOG_LEVEL: WARNING
+  worker:
+    environment:
+      FF_LOG_LEVEL: WARNING
+  nginx:
+    environment:
+      NGINX_API_RATE: 5000r/s
+      NGINX_AUTH_RATE: 500r/s
+  sandbox:
+    ports: ["9000:9000"]   # chaos control plane for the harness
