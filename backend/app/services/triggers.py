@@ -19,6 +19,7 @@ from app.connectors.sdk import ConnectorError
 from app.core.errors import AuthenticationError, NotFoundError, ValidationFailedError
 from app.core.metrics import WEBHOOKS_RECEIVED
 from app.core.principal import Principal
+from app.core.rbac import Permission
 from app.core.security import verify_signature
 from app.db.enums import TriggerType
 from app.db.models import ApiKey, Execution, StoredFile, Workflow, WorkflowTrigger
@@ -176,7 +177,7 @@ async def publish_event(
     )
     if workspace_id is not None:
         stmt = stmt.where(WorkflowTrigger.workspace_id == workspace_id)
-    allowed = principal.workspace_filter()
+    allowed = principal.workspaces_with(Permission.EVENTS_PUBLISH)
     results = []
     payload = {"event": name, "data": data, "event_id": event_id, "published_at": datetime.now(UTC).isoformat()}
     for trig in (await session.execute(stmt)).scalars().all():

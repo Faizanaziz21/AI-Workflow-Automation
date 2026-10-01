@@ -732,8 +732,14 @@ def delete_timer_jobs(run: NodeRun) -> Any:
 
 
 async def signal(
-    session: AsyncSession, org_id: uuid.UUID, wait_key: str, payload: Any, execution_id: uuid.UUID | None = None
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    wait_key: str,
+    payload: Any,
+    execution_id: uuid.UUID | None = None,
+    workspace_ids: set[uuid.UUID] | None = None,
 ) -> int:
+    """Resume nodes waiting on ``wait_key``; ``workspace_ids`` (None = all) limits which workspaces are reached."""
     stmt = (
         select(NodeRun)
         .where(NodeRun.org_id == org_id, NodeRun.wait_key == wait_key, NodeRun.status == S.WAITING.value)
@@ -741,6 +747,10 @@ async def signal(
     )
     if execution_id is not None:
         stmt = stmt.where(NodeRun.execution_id == execution_id)
+    if workspace_ids is not None:
+        stmt = stmt.where(
+            NodeRun.execution_id.in_(select(Execution.id).where(Execution.workspace_id.in_(workspace_ids)))
+        )
     runs = (await session.execute(stmt)).scalars().all()
     for run in runs:
         run.wait_key = None  # a second signal must not resume the node twice

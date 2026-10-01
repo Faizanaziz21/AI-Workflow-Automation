@@ -124,3 +124,22 @@ async def test_dead_letters_are_workspace_scoped(client, tenant):
     ]
     r = await client.post(f"/api/v1/dead-letters/{own[0]['id']}/resolve", headers=insider["headers"])
     assert r.status_code == 200
+
+
+async def test_signals_only_reach_permitted_workspaces(client, tenant):
+    from tests.conftest import drain, get_execution, publish, run
+    from tests.factories import linear
+
+    d = linear(("wait", "logic.wait_until", {"mode": "event", "event_key": "reply:{{ trigger.email }}"}))
+    wf = await publish(client, tenant, d)
+    ex_id = await run(client, tenant, wf, {"email": "jane@globex.com"})
+    await drain()
+    other_ws = (await client.post("/api/v1/workspaces", headers=tenant.headers, json={"name": "Elsewhere"})).json()
+    outsider = await add_user(client, tenant, "operator", workspace_id=other_ws["id"])
+    r = await client.post("/api/v1/signals", headers=outsider["headers"], json={"key": "reply:jane@globex.com"})
+    assert r.status_code == 200 and r.json()["resumed"] == 0
+    insider = await add_user(client, tenant, "operator", workspace_id=tenant.workspace_id)
+    r = await client.post("/api/v1/signals", headers=insider["headers"], json={"key": "reply:jane@globex.com"})
+    assert r.json()["resumed"] == 1
+    await drain()
+    assert (await get_execution(client, tenant, ex_id))["status"] == "COMPLETED"

@@ -406,9 +406,10 @@ async def signal_execution(
 @router.post("/signals")
 async def signal_by_key(body: SignalBody, principal: PrincipalDep, session: SessionDep) -> dict[str, Any]:
     """Resume every node in the organisation waiting on ``key`` (e.g. ``reply:jane@acme.com``)."""
-    if not principal.has_anywhere(Permission.EVENTS_PUBLISH):
+    allowed = principal.workspaces_with(Permission.EVENTS_PUBLISH)
+    if allowed is not None and not allowed:
         raise PermissionDeniedError("Missing permission 'events:publish'")
-    resumed = await executor.signal(session, principal.org_id, body.key, body.payload)
+    resumed = await executor.signal(session, principal.org_id, body.key, body.payload, workspace_ids=allowed)
     return {"resumed": resumed}
 
 
