@@ -362,6 +362,7 @@ class NodeRun(IdMixin, Base):
     __table_args__ = (
         UniqueConstraint("execution_id", "node_id", "scope"),
         Index("ix_node_runs_wait_key", "org_id", "wait_key", postgresql_where=text("wait_key IS NOT NULL")),
+        Index("ix_node_runs_org_finished", "org_id", "finished_at"),
     )
 
     org_id: Mapped[uuid.UUID] = _org_fk()
@@ -392,7 +393,10 @@ class NodeRun(IdMixin, Base):
 
 class ExecutionEvent(Base):
     __tablename__ = "execution_events"
-    __table_args__ = (Index("ix_exec_events_exec", "execution_id", "id"),)
+    __table_args__ = (
+        Index("ix_exec_events_exec", "execution_id", "id"),
+        Index("ix_exec_events_org_type_created", "org_id", "event_type", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     org_id: Mapped[uuid.UUID] = mapped_column(UUIDType, nullable=False)

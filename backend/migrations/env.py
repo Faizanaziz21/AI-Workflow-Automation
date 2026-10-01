@@ -18,19 +18,30 @@ config.set_main_option("sqlalchemy.url", get_settings().database_url)
 target_metadata = Base.metadata
 
 
+def include_object(obj, name, type_, reflected, compare_to):  # type: ignore[no-untyped-def]
+    # Ignore tables created outside the ORM (e.g. demo analytics tables) and the expression index whose
+    # reflected SQL differs only cosmetically from the model definition.
+    if type_ == "table" and reflected and compare_to is None:
+        return False
+    return not (type_ == "index" and name == "ix_audit_search")
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection, target_metadata=target_metadata, compare_type=True, include_object=include_object
+    )
     with context.begin_transaction():
         context.run_migrations()
 
