@@ -25,3 +25,4 @@ loadtest/results/raw/
 frontend/test-results/
 frontend/next-env.d.ts
 *.tsbuildinfo
+dump.rdb
