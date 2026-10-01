@@ -22,9 +22,10 @@ from collections import OrderedDict, defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select, text, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import bindparam, delete, select, text, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import make_transient_to_detached
 
 from app.core.config import get_settings
 from app.core.metrics import EXECUTION_DURATION, EXECUTIONS_FINISHED, EXECUTIONS_STARTED
@@ -119,6 +120,14 @@ def idempotency_key_for(execution_id: uuid.UUID, node_id: str, scope: str) -> st
 # ----------------------------------------------------------------------------- creation
 
 
+_INSERT_EXECUTION = (
+    pg_insert(Execution)
+    .values({c.key: bindparam(c.key, type_=c.type) for c in Execution.__table__.columns})
+    .on_conflict_do_nothing(index_elements=["workflow_id", "idempotency_key"])
+    .returning(Execution.id)
+)
+
+
 async def start_execution(
     session: AsyncSession,
     *,
@@ -135,16 +144,6 @@ async def start_execution(
     priority: int = 0,
 ) -> tuple[Execution, bool]:
     """Create an execution (idempotent on ``(workflow_id, idempotency_key)``). Returns (execution, created)."""
-    if idempotency_key:
-        existing = (
-            await session.execute(
-                select(Execution).where(
-                    Execution.workflow_id == workflow_id, Execution.idempotency_key == idempotency_key
-                )
-            )
-        ).scalar_one_or_none()
-        if existing is not None:
-            return existing, False
     definition, graph = await load_definition(session, version_id)
     trigger_ids = graph.trigger_ids()
     if not trigger_ids:
@@ -152,29 +151,34 @@ async def start_execution(
     settings = get_settings()
     timeout = definition.settings.execution_timeout_seconds or settings.default_execution_timeout_seconds
     created = now()
-    ex = Execution(
-        id=uuid.uuid4(),
-        org_id=org_id,
-        workspace_id=workspace_id,
-        workflow_id=workflow_id,
-        workflow_version_id=version_id,
-        status=E.RUNNING.value,
-        trigger_type=trigger_type,
-        trigger_payload=payload,
-        idempotency_key=idempotency_key,
-        correlation_key=(correlation_key or None) and str(correlation_key)[:200],
-        parent_execution_id=parent_execution_id,
-        priority=priority,
-        created_by=created_by,
-        created_at=created,
-        started_at=created,
-        deadline_at=created + timedelta(seconds=timeout),
-    )
-    try:
-        async with session.begin_nested():
-            session.add(ex)
-            await session.flush()
-    except IntegrityError:
+    fields: dict[str, Any] = {
+        "id": uuid.uuid4(),
+        "org_id": org_id,
+        "workspace_id": workspace_id,
+        "workflow_id": workflow_id,
+        "workflow_version_id": version_id,
+        "status": E.RUNNING.value,
+        "trigger_type": trigger_type,
+        "trigger_payload": payload,
+        "idempotency_key": idempotency_key,
+        "correlation_key": (correlation_key or None) and str(correlation_key)[:200],
+        "parent_execution_id": parent_execution_id,
+        "priority": priority,
+        "is_paused": False,
+        "cancel_requested": False,
+        "error": None,
+        "output": None,
+        "retry_count": 0,
+        "deadline_at": created + timedelta(seconds=timeout),
+        "created_by": created_by,
+        "created_at": created,
+        "started_at": created,
+        "finished_at": None,
+        "updated_at": created,
+    }
+    # One round trip: a duplicate idempotency key inserts nothing (instead of a pre-check plus a savepoint).
+    inserted = (await session.execute(_INSERT_EXECUTION, fields)).scalar_one_or_none()
+    if inserted is None:
         existing = (
             await session.execute(
                 select(Execution).where(
@@ -183,6 +187,9 @@ async def start_execution(
             )
         ).scalar_one()
         return existing, False
+    ex = Execution(**fields)
+    make_transient_to_detached(ex)  # the row exists; attach it to the session without a second INSERT
+    session.add(ex)
     trigger_id = trigger_ids[0]
     session.add(
         NodeRun(

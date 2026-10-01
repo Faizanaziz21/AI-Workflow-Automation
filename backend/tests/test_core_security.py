@@ -96,3 +96,22 @@ def test_settings_parse_list_env(monkeypatch):
     s = Settings()
     assert s.cors_origins == ["https://a.example", "https://b.example"]
     assert s.egress_allowlist == ["*.corp.internal"]
+
+
+async def test_tracing_middleware_passes_responses_through():
+    from app.core.telemetry import _TracingMiddleware
+
+    sent: list[dict] = []
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 503, "headers": []})
+        await send({"type": "http.response.body", "body": b"x"})
+
+    async def send(message):
+        sent.append(message)
+
+    async def receive():
+        return {"type": "http.request", "body": b""}
+
+    await _TracingMiddleware(app)({"type": "http", "method": "GET", "path": "/x"}, receive, send)
+    assert [m["type"] for m in sent] == ["http.response.start", "http.response.body"] and sent[0]["status"] == 503

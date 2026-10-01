@@ -47,19 +47,34 @@ def get_tracer(name: str = "flowforge") -> trace.Tracer:
     return trace.get_tracer(name)
 
 
+class _TracingMiddleware:
+    """Server span per HTTP request (plain ASGI; installed only when an exporter is configured)."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+        self.tracer = get_tracer("flowforge.http")
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        with self.tracer.start_as_current_span(
+            f"{scope['method']} {scope['path']}",
+            kind=SpanKind.SERVER,
+            attributes={"http.method": scope["method"], "http.target": scope["path"]},
+        ) as span:
+
+            async def send_with_status(message: Any) -> None:
+                if message["type"] == "http.response.start":
+                    span.set_attribute("http.status_code", message["status"])
+                    if message["status"] >= 500:
+                        span.set_status(Status(StatusCode.ERROR))
+                await send(message)
+
+            await self.app(scope, receive, send_with_status)
+
+
 def setup_tracing(app: Any) -> None:
     configure_tracer_provider("-api")
-    tracer = get_tracer("flowforge.http")
-
-    @app.middleware("http")
-    async def _trace_requests(request, call_next):  # type: ignore[no-untyped-def]
-        with tracer.start_as_current_span(
-            f"{request.method} {request.url.path}",
-            kind=SpanKind.SERVER,
-            attributes={"http.method": request.method, "http.target": request.url.path},
-        ) as span:
-            response = await call_next(request)
-            span.set_attribute("http.status_code", response.status_code)
-            if response.status_code >= 500:
-                span.set_status(Status(StatusCode.ERROR))
-            return response
+    if get_settings().otel_exporter_endpoint:
+        app.add_middleware(_TracingMiddleware)
