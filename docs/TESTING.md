@@ -93,5 +93,8 @@ python loadtest/flowforge_load.py --label my-run          # defaults: 100 users,
 python loadtest/flowforge_load.py --help                  # tune users, workflows, burst size, fault rates
 ```
 
+A single generator process tops out around 70–90 signed requests/s, so measure raw ingest capacity with several
+in parallel: `docker compose stop worker && loadtest/parallel_ingest.sh 3 1500`.
+
 Each run writes `loadtest/results/<timestamp>-<label>.json` (raw numbers, including the queue time series) and a
 Markdown report. The recorded runs and their interpretation are in [BENCHMARKS.md](BENCHMARKS.md).

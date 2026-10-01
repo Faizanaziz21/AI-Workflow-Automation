@@ -58,15 +58,19 @@ Chaos faults on every sandbox call (HTTP APIs and the LLM): +300 ms (+0–700 ms
 
 ## Ingest capacity (workers stopped)
 
-With workers stopped, 3,000 signed webhooks (250 in flight) were all accepted (0 errors) in 42.3 s:
-**70.9 webhooks/s** across two API processes, p50 2,244 ms, p95 8,494 ms. Each accepted
-webhook is a committed execution plus its first job, so a 202 means the work is durable.
+**At least 248 durable webhook accepts per second** on the shared host. This was measured with
+`loadtest/parallel_ingest.sh`: three generator processes sent 1,500 signed webhooks each (120 in flight per
+generator), and 4,500 were accepted with 0 errors in 18.1 s, p50 ~0.8 s and p95 ~4 s. Each accept is a committed
+execution plus its first job, so a `202` means the work is durable. Each generator process is itself CPU-bound
+(a single one measured 84% of a core), so 248/s is a lower bound for the API.
 
-At this concurrency the latency is queueing (250 in flight ÷ ~71/s ≈ 3.5 s). This figure is close to the 65.7/s
-measured before the `NOTIFY` fix, so with workers stopped another limit dominates. The likeliest candidate is the
-number of sequential database round trips per webhook: trigger lookup, signing-secret decrypt, idempotency check,
-then the execution, trigger node run, event and two jobs. Batching that path is the next optimisation to profile.
-In steady state, webhook p95 is ~160 ms.
+**Measurement note.** A single Python load-generator process tops out around 70–90 signed requests/s on this
+host. The single-generator runs, including the "ingest/s" figures in the burst and chaos rows above and an earlier
+ingest-only run (70.9/s), measured the generator rather than the API. Profiling found and removed real ingest
+overhead along the way. In-process CPU per signed webhook fell from 10.3 ms to 6.3 ms after replacing
+`BaseHTTPMiddleware` with plain ASGI middleware, inserting executions with a single
+`ON CONFLICT DO NOTHING RETURNING` instead of SELECT + SAVEPOINT, and reusing compiled enqueue statements. Raw
+files: `loadtest/results/*ingest-3-generators-g*.json`.
 
 ## Scale-out: 2 API processes, 4 workers
 
@@ -108,8 +112,8 @@ Chaos faults on every sandbox call (HTTP APIs and the LLM): +300 ms (+0–700 ms
 
 Doubling the workers on the **same 4 cores** still helps where work waits on I/O. Burst drain time fell from 60.7 s
 to 37.2 s and end-to-end p95 from 75.5 s to 56.7 s. Under chaos, throughput rose from 11.3 to 18.0 executions/s
-and p95 fell from 65.6 s to 37.9 s, because more slots are available while calls hang. Ingest dropped (87.9 → 59.8
-webhooks/s) because four workers now compete with the API for the same CPU and database. On real
+and p95 fell from 65.6 s to 37.9 s, because more slots are available while calls hang. The ingest/s figures in these single-generator runs are bounded by the load generator (see the measurement note
+above), so they are not a measure of API capacity. On real
 infrastructure, workers and API run on separate nodes.
 
 ## Defects the load tests found (and fixed)
@@ -123,7 +127,7 @@ most now have a regression test.
 | 2 | Under injected faults, 23% of executions failed even though nodes had 4 attempts | httpx timeouts and connection errors escaped the HTTP node as generic exceptions and were classified **non-retryable** | Transport errors and timeouts are retryable `ConnectorError`s; the runner also treats raw transport errors as retryable | `test_http_transport_failures_are_retryable`, `test_runner_classifies_raw_transport_errors_as_retryable` |
 | 3 | Sporadic `404 Workflow not found` / `401 Session revoked` on the request right after a create or login | FastAPI ran the session dependency's commit *after* sending the response. With two API replicas, the next request could land on the other replica before the commit | Request transactions commit before the response (`Depends(..., scope="function")`) | `test_session_commits_before_response` |
 | 4 | Trivial nodes took ~170 ms; the engine plateaued at ~104 node runs/s | Worker pool (20) smaller than job concurrency (32): overflow connections were opened and closed per transaction (TCP + auth + asyncpg type introspection), plus a liveness ping per checkout and a separate transaction to delete each finished job | Worker pool sized to concurrency + 8, no pre-ping on workers, jobs deleted in the same transaction as their state change | `test_jobs_complete_in_the_state_transaction` |
-| 5 | During webhook bursts the API processes were ~80% idle while requests queued | `pg_notify` inside every enqueuing transaction: PostgreSQL takes a global lock at commit for transactions that issued NOTIFY, so **all** commits serialised (126 sessions waiting on `Lock:object`) | Wake-ups sent after commit, coalesced per process, from an autocommit connection. With workers running, burst ingest rose from 75 to 88 webhooks/s and its p95 fell from 7.2 s to 4.8 s | `test_wakeup_notification_is_sent_after_commit_only` |
+| 5 | During webhook bursts the API processes were ~80% idle while requests queued | `pg_notify` inside every enqueuing transaction: PostgreSQL takes a global lock at commit for transactions that issued NOTIFY, so **all** commits serialised (126 sessions waiting on `Lock:object`) | Wake-ups sent after commit, coalesced per process, from an autocommit connection. | `test_wakeup_notification_is_sent_after_commit_only` |
 | 6 | 1 in ~3,000 webhook POSTs returned 502 | uvicorn closed idle keep-alive connections after 5 s while nginx reused them for up to 60 s | uvicorn keep-alive 75 s, explicit nginx upstream keep-alive 60 s | measured: 0 errors in 6,166 webhooks |
 | 7 | 502s from nginx after an API container was recreated | nginx resolved `api` once at start-up | Upstreams re-resolve through Docker DNS (`resolve`) | manual |
 
