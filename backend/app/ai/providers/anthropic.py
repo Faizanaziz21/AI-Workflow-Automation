@@ -24,6 +24,8 @@ SERVER_FALLBACK_MODELS = ("claude-opus-5-5", "claude-opus-5", "claude-fable-5-1"
 EFFORT_LEVELS = {"low", "medium", "high", "xhigh", "max"}
 
 _clients: dict[tuple[str, str], anthropic.AsyncAnthropic] = {}
+# Optional factory for the SDK's HTTP client (proxies, custom TLS, test transports).
+http_client_factory: Any = None
 
 
 def _client(api_key: str, base_url: str | None) -> anthropic.AsyncAnthropic:
@@ -31,7 +33,8 @@ def _client(api_key: str, base_url: str | None) -> anthropic.AsyncAnthropic:
     client = _clients.get(key)
     if client is None:
         # Retries/fallback are owned by the AI gateway so attempts are visible and costed.
-        client = anthropic.AsyncAnthropic(api_key=api_key, base_url=base_url or None, max_retries=0)
+        extra = {"http_client": http_client_factory()} if http_client_factory else {}
+        client = anthropic.AsyncAnthropic(api_key=api_key, base_url=base_url or None, max_retries=0, **extra)
         _clients[key] = client
     return client
 

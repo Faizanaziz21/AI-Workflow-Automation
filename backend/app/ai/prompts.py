@@ -176,7 +176,7 @@ BUILTIN_PROMPTS: dict[str, PromptDef] = {
         description="Route an inbound email to the right team",
         system="You triage inbound customer email for routing. " + _GUARD,
         user=(
-            "Route this email.\n<input>\nFrom: {{ input.from }}\nSubject: {{ input.subject }}\n\n{{ input.body }}\n"
+            "Route this email.\n<input>\nFrom: {{ input.sender }}\nSubject: {{ input.subject }}\n\n{{ input.body }}\n"
             "</input>\nCategories: sales, support, billing, complaint, partnership, spam, other."
         ),
         output_schema=EMAIL_ROUTER_SCHEMA,

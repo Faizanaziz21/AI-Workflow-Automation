@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.ai.gateway import AIError, AIRequest, AIResult, ModelRef
 from app.ai.prompts import (
+    BUILTIN_PROMPTS,
     CONFIDENCE,
     DOCUMENT_SCHEMA,
     EMAIL_ROUTER_SCHEMA,
@@ -73,7 +74,11 @@ async def run_prompt(
         user = render(user_override if user_override is not None else prompt.user, scope)
     except ExpressionError as exc:
         raise NodeError(f"Prompt template error: {exc.message}") from exc
-    schema = output_schema if output_schema is not None else (prompt.output_schema if use_library_schema else None)
+    schema = output_schema
+    if schema is None and use_library_schema:
+        builtin = BUILTIN_PROMPTS.get(key)
+        # Custom prompt versions may omit a schema; the node's output contract still applies.
+        schema = prompt.output_schema or (builtin.output_schema if builtin else None)
     request = AIRequest(
         prompt=stringify(user),
         system=stringify(system) or None,
@@ -543,7 +548,7 @@ class EmailRouterNode(_AINode):
             ctx,
             "email_router",
             config.model,
-            {"from": config.sender, "subject": config.subject, "body": config.body[:50_000]},
+            {"sender": config.sender, "subject": config.subject, "body": config.body[:50_000]},
         )
         data = result.data
         return Completed(
