@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import PrincipalDep, SessionDep, WorkspaceDep
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationFailedError
-from app.core.masking import MASK, mask_data
+from app.core.masking import MASK, mask_data, mask_inline
 from app.core.principal import Principal
 from app.core.rbac import Permission
 from app.db.enums import TERMINAL_EXECUTION_STATUSES, ExecutionStatus, TriggerType
@@ -422,26 +422,36 @@ async def list_dead_letters(
     include_resolved: bool = False,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[dict[str, Any]]:
-    if not principal.has_anywhere(Permission.DEAD_LETTERS_MANAGE):
+    allowed = principal.workspaces_with(Permission.DEAD_LETTERS_MANAGE)
+    if allowed is not None and not allowed:
         raise PermissionDeniedError("Missing permission 'dead_letters:manage'")
-    stmt = select(DeadLetter).where(DeadLetter.org_id == principal.org_id)
+    stmt = (
+        select(DeadLetter, Execution.workspace_id, Workflow.name)
+        .outerjoin(Execution, Execution.id == DeadLetter.execution_id)
+        .outerjoin(Workflow, Workflow.id == Execution.workflow_id)
+        .where(DeadLetter.org_id == principal.org_id)
+    )
+    if allowed is not None:  # workspace-scoped operators only see their workspaces' dead letters
+        stmt = stmt.where(Execution.workspace_id.in_(allowed))
     if not include_resolved:
         stmt = stmt.where(DeadLetter.resolved_at.is_(None))
-    rows = (await session.execute(stmt.order_by(DeadLetter.created_at.desc()).limit(limit))).scalars().all()
+    rows = (await session.execute(stmt.order_by(DeadLetter.created_at.desc()).limit(limit))).all()
     return [
         {
             "id": str(d.id),
             "execution_id": str(d.execution_id) if d.execution_id else None,
+            "workspace_id": str(ws_id) if ws_id else None,
+            "workflow_name": wf_name,
             "node_id": d.node_id,
             "source": d.source,
             "kind": d.kind,
-            "error": d.error,
+            "error": mask_inline(d.error or ""),
             "attempts": d.attempts,
             "created_at": d.created_at.isoformat(),
             "resolved_at": d.resolved_at.isoformat() if d.resolved_at else None,
             "resolution": d.resolution,
         }
-        for d in rows
+        for d, ws_id, wf_name in rows
     ]
 
 
@@ -453,6 +463,13 @@ async def _dead_letter(session: Any, principal: Principal, dl_id: uuid.UUID) -> 
     ).scalar_one_or_none()
     if dl is None:
         raise NotFoundError("Dead letter not found")
+    if dl.execution_id is not None:
+        ws_id = (await session.execute(select(Execution.workspace_id).where(Execution.id == dl.execution_id))).scalar()
+        if ws_id is None or not principal.can_access_workspace(ws_id):
+            raise NotFoundError("Dead letter not found")
+        principal.require(Permission.DEAD_LETTERS_MANAGE, ws_id)
+    else:
+        principal.require(Permission.DEAD_LETTERS_MANAGE)  # org-level jobs (e.g. trigger polls): org-wide role
     return dl
 
 
@@ -468,8 +485,6 @@ async def requeue_dead_letter(dl_id: uuid.UUID, principal: PrincipalDep, session
             raise ConflictError(f"Execution is {ex.status}")
         result["nodes_reset"] = await executor.retry_execution(session, ex)
     else:
-        if not principal.has_anywhere(Permission.DEAD_LETTERS_MANAGE):
-            raise PermissionDeniedError("Missing permission 'dead_letters:manage'")
         from app.engine import queue
 
         await queue.enqueue(session, dl.kind, dl.payload, org_id=dl.org_id, execution_id=dl.execution_id)
@@ -489,8 +504,6 @@ async def requeue_dead_letter(dl_id: uuid.UUID, principal: PrincipalDep, session
 
 @router.post("/dead-letters/{dl_id}/resolve")
 async def resolve_dead_letter(dl_id: uuid.UUID, principal: PrincipalDep, session: SessionDep) -> dict[str, Any]:
-    if not principal.has_anywhere(Permission.DEAD_LETTERS_MANAGE):
-        raise PermissionDeniedError("Missing permission 'dead_letters:manage'")
     dl = await _dead_letter(session, principal, dl_id)
     dl.resolved_at = datetime.now(UTC)
     dl.resolved_by = principal.user_id

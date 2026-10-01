@@ -102,3 +102,25 @@ async def test_deactivated_user_cannot_login(client, tenant):
     r = await client.post("/api/v1/auth/login", json={"email": u["email"], "password": PASSWORD})
     assert r.status_code == 401
     assert (await client.get("/api/v1/auth/me", headers=u["headers"])).status_code == 401
+
+
+async def test_dead_letters_are_workspace_scoped(client, tenant):
+    from tests.conftest import drain, publish, run
+    from tests.factories import linear
+
+    wf = await publish(client, tenant, linear(("boom", "logic.stop", {"outcome": "error", "message": "nope"})))
+    await run(client, tenant, wf)
+    await drain()
+    own = (await client.get("/api/v1/dead-letters", headers=tenant.headers)).json()
+    assert own and own[0]["workspace_id"] == tenant.workspace_id
+    other_ws = (await client.post("/api/v1/workspaces", headers=tenant.headers, json={"name": "Ops"})).json()["id"]
+    outsider = await add_user(client, tenant, "operator", workspace_id=other_ws)
+    assert (await client.get("/api/v1/dead-letters", headers=outsider["headers"])).json() == []
+    r = await client.post(f"/api/v1/dead-letters/{own[0]['id']}/resolve", headers=outsider["headers"])
+    assert r.status_code == 404
+    insider = await add_user(client, tenant, "operator", workspace_id=tenant.workspace_id)
+    assert [d["id"] for d in (await client.get("/api/v1/dead-letters", headers=insider["headers"])).json()] == [
+        own[0]["id"]
+    ]
+    r = await client.post(f"/api/v1/dead-letters/{own[0]['id']}/resolve", headers=insider["headers"])
+    assert r.status_code == 200
