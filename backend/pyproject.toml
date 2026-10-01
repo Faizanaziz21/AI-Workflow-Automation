@@ -31,6 +31,7 @@ dependencies = [
     "opentelemetry-api>=1.27",
     "opentelemetry-sdk>=1.27",
     "opentelemetry-exporter-otlp-proto-http>=1.27",
+    "anthropic>=1.11",
 ]
 
 [project.optional-dependencies]
@@ -65,6 +66,9 @@ ignore = [
     "S105", "S106", # false positives on 'token'/'password' identifiers
     "RUF001", "RUF002", "RUF003",
     "UP042",
+    "E501",     # formatter owns line length; long literals allowed
+    "ASYNC109", # explicit timeout params are part of connector contracts
+    "S608",     # SQL built from validated identifiers only (see sqlutil)
 ]
 
 [tool.ruff.lint.per-file-ignores]
