@@ -13,7 +13,9 @@ limit_req_status 429;
 
 # Re-resolve service names (Docker DNS) so scaled/recreated containers are picked up without an nginx reload.
 resolver 127.0.0.11 valid=10s ipv6=off;
-upstream api { zone upstream_api 64k; server api:8000 resolve; keepalive 64; }
+# Idle upstream connections are closed by nginx after 60 s; uvicorn keeps them for 75 s (--timeout-keep-alive),
+# so nginx never reuses a connection the API is closing (which surfaces as a 502 on non-retryable POSTs).
+upstream api { zone upstream_api 64k; server api:8000 resolve; keepalive 64; keepalive_timeout 60s; }
 upstream web { zone upstream_web 64k; server web:3000 resolve; keepalive 32; }
 
 map $http_x_request_id $req_id { default $http_x_request_id; "" $request_id; }

@@ -5,9 +5,10 @@ images:
   - { name: flowforge/backend, newName: ghcr.io/your-org/flowforge-backend, newTag: "1.0.0" }
   - { name: flowforge/web, newName: ghcr.io/your-org/flowforge-web, newTag: "1.0.0" }
 patches:
-  - target: { kind: Deployment, name: worker }
+  # Replica counts are owned by the HPAs; raise their floors instead of patching Deployment replicas.
+  - target: { kind: HorizontalPodAutoscaler, name: worker }
     patch: |-
-      - { op: replace, path: /spec/replicas, value: 6 }
+      - { op: replace, path: /spec/minReplicas, value: 6 }
   - target: { kind: HorizontalPodAutoscaler, name: api }
     patch: |-
       - { op: replace, path: /spec/minReplicas, value: 3 }

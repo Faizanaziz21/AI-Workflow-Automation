@@ -49,7 +49,7 @@ services:
 
   api:
     <<: *backend
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*", "--workers", "1"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*", "--workers", "1", "--timeout-keep-alive", "75"]
     expose: ["8000"]
     deploy: { replicas: 2 }   # one process per container keeps Prometheus metrics per-target
 

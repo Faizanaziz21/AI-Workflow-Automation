@@ -11,7 +11,7 @@ data:
   FF_ALLOW_PRIVATE_NETWORK_EGRESS: "false"
   FF_EMBEDDED_SCHEDULER: "false"
   FF_WORKER_CONCURRENCY: "32"
-  FF_DB_POOL_SIZE: "10"
+  FF_DB_POOL_SIZE: "20"          # API pods; workers size their pool to FF_WORKER_CONCURRENCY + 8
   FF_OTEL_EXPORTER_ENDPOINT: http://otel-collector.observability:4318
 ---
 # Secrets are expected to be synced from a vault (External Secrets Operator / Sealed Secrets).
