@@ -1,0 +1,289 @@
+{
+  "setup": {
+    "seconds": 7.2,
+    "users": 10,
+    "workflows": 60,
+    "api": {
+      "GET /workflows/{id}/trigger": {
+        "count": 60,
+        "mean": 378.4,
+        "p50": 184.9,
+        "p95": 1255.4,
+        "p99": 1464.1,
+        "max": 1464.7,
+        "rps": 8.3,
+        "error_rate": 0.0,
+        "statuses": {
+          "200": 60
+        }
+      },
+      "GET /workspaces": {
+        "count": 1,
+        "mean": 34.5,
+        "p50": 34.5,
+        "p95": 34.5,
+        "p99": 34.5,
+        "max": 34.5,
+        "rps": 0.1,
+        "error_rate": 0.0,
+        "statuses": {
+          "200": 1
+        }
+      },
+      "POST /auth/login": {
+        "count": 10,
+        "mean": 226.5,
+        "p50": 257.8,
+        "p95": 352.1,
+        "p99": 367.7,
+        "max": 371.6,
+        "rps": 1.4,
+        "error_rate": 0.0,
+        "statuses": {
+          "200": 10
+        }
+      },
+      "POST /auth/register-org": {
+        "count": 1,
+        "mean": 183.1,
+        "p50": 183.1,
+        "p95": 183.1,
+        "p99": 183.1,
+        "max": 183.1,
+        "rps": 0.1,
+        "error_rate": 0.0,
+        "statuses": {
+          "201": 1
+        }
+      },
+      "POST /connections": {
+        "count": 1,
+        "mean": 699.0,
+        "p50": 699.0,
+        "p95": 699.0,
+        "p99": 699.0,
+        "max": 699.0,
+        "rps": 0.1,
+        "error_rate": 0.0,
+        "statuses": {
+          "201": 1
+        }
+      },
+      "POST /users": {
+        "count": 10,
+        "mean": 1243.9,
+        "p50": 1199.3,
+        "p95": 1605.6,
+        "p99": 1609.1,
+        "max": 1610.0,
+        "rps": 1.4,
+        "error_rate": 0.0,
+        "statuses": {
+          "201": 10
+        }
+      },
+      "POST /workflows": {
+        "count": 60,
+        "mean": 385.1,
+        "p50": 338.0,
+        "p95": 803.0,
+        "p99": 919.8,
+        "max": 1051.4,
+        "rps": 8.3,
+        "error_rate": 0.0,
+        "statuses": {
+          "201": 60
+        }
+      },
+      "POST /workflows/{id}/publish": {
+        "count": 60,
+        "mean": 509.3,
+        "p50": 421.8,
+        "p95": 1237.6,
+        "p99": 1591.1,
+        "max": 1604.6,
+        "rps": 8.3,
+        "error_rate": 0.0,
+        "statuses": {
+          "200": 60
+        }
+      }
+    }
+  },
+  "burst": {
+    "load_seconds": 18.1,
+    "drain_seconds_after_load": "timeout",
+    "api": {
+      "POST /hooks/{token} (burst)": {
+        "count": 1500,
+        "mean": 1359.5,
+        "p50": 832.9,
+        "p95": 3814.3,
+        "p99": 6670.0,
+        "max": 9576.6,
+        "rps": 82.7,
+        "error_rate": 0.0,
+        "statuses": {
+          "202": 1500
+        }
+      }
+    },
+    "client_errors": {},
+    "executions": {
+      "total": 1500,
+      "by_status": {
+        "CANCELLED": 0,
+        "COMPLETED": 0,
+        "FAILED": 0,
+        "RUNNING": 1500
+      },
+      "failure_rate": 0.0,
+      "throughput_per_s": 0.0,
+      "end_to_end_ms": {
+        "count": 0,
+        "mean": 0.0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "max": 0.0
+      },
+      "run_time_ms": {
+        "count": 0,
+        "mean": 0.0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "max": 0.0
+      },
+      "node_retries_scheduled": 0,
+      "integration_calls": 0,
+      "integration_errored_attempts": 0
+    },
+    "queue": {
+      "samples": 12,
+      "max_ready": 22500,
+      "max_running": 0,
+      "max_delayed": 22508,
+      "max_oldest_ready_s": 845.76,
+      "series": [
+        {
+          "t": 0.3,
+          "ready": 17784,
+          "delayed": 17796,
+          "running": 0,
+          "oldest_ready_s": 826.02
+        },
+        {
+          "t": 3.1,
+          "ready": 18190,
+          "delayed": 18202,
+          "running": 0,
+          "oldest_ready_s": 828.87
+        },
+        {
+          "t": 4.7,
+          "ready": 18540,
+          "delayed": 18698,
+          "running": 0,
+          "oldest_ready_s": 830.57
+        },
+        {
+          "t": 6.4,
+          "ready": 19045,
+          "delayed": 19169,
+          "running": 0,
+          "oldest_ready_s": 832.22
+        },
+        {
+          "t": 8.0,
+          "ready": 19507,
+          "delayed": 19629,
+          "running": 0,
+          "oldest_ready_s": 833.82
+        },
+        {
+          "t": 10.5,
+          "ready": 20124,
+          "delayed": 20364,
+          "running": 0,
+          "oldest_ready_s": 836.29
+        },
+        {
+          "t": 12.0,
+          "ready": 20642,
+          "delayed": 20740,
+          "running": 0,
+          "oldest_ready_s": 837.83
+        },
+        {
+          "t": 13.6,
+          "ready": 21107,
+          "delayed": 21167,
+          "running": 0,
+          "oldest_ready_s": 839.44
+        },
+        {
+          "t": 15.1,
+          "ready": 21540,
+          "delayed": 21602,
+          "running": 0,
+          "oldest_ready_s": 840.91
+        },
+        {
+          "t": 17.8,
+          "ready": 22323,
+          "delayed": 22447,
+          "running": 0,
+          "oldest_ready_s": 843.61
+        },
+        {
+          "t": 18.8,
+          "ready": 22500,
+          "delayed": 22508,
+          "running": 0,
+          "oldest_ready_s": 844.71
+        },
+        {
+          "t": 19.9,
+          "ready": 22500,
+          "delayed": 22508,
+          "running": 0,
+          "oldest_ready_s": 845.76
+        }
+      ]
+    },
+    "webhooks_sent": 1500,
+    "webhooks_accepted": 1500,
+    "ingest_seconds": 18.14,
+    "ingest_rate_per_s": 82.7,
+    "target_workflows": 60
+  },
+  "meta": {
+    "started_at": "2026-10-01T22:09:40.816964+00:00",
+    "base_url": "http://localhost:8080",
+    "label": "par2",
+    "client_host": "Linux x86_64, python 3.11.15",
+    "params": {
+      "base_url": "http://localhost:8080",
+      "sandbox_control": "http://localhost:9000",
+      "sandbox_internal": "http://sandbox:9000",
+      "users": 10,
+      "workflows": 60,
+      "steady_seconds": 0,
+      "think_min": 2.0,
+      "think_max": 4.0,
+      "burst": 1500,
+      "burst_concurrency": 120,
+      "chaos": 0,
+      "chaos_latency_ms": 300,
+      "chaos_jitter_ms": 700,
+      "chaos_failure_rate": 0.15,
+      "chaos_timeout_rate": 0.05,
+      "chaos_timeout_ms": 20000,
+      "drain_timeout": 2.0,
+      "sample_interval": 1.0,
+      "max_connections": 300,
+      "label": "par2"
+    }
+  }
+}

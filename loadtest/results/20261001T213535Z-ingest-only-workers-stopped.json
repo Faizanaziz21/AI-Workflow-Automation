@@ -1,0 +1,303 @@
+{
+  "setup": {
+    "seconds": 14.4,
+    "users": 100,
+    "workflows": 500,
+    "api": {
+      "GET /workflows/{id}/trigger": {
+        "count": 500,
+        "mean": 114.2,
+        "p50": 95.0,
+        "p95": 306.2,
+        "p99": 612.7,
+        "max": 713.4,
+        "rps": 34.8,
+        "error_rate": 0.0,
+        "statuses": {
+          "200": 500
+        }
+      },
+      "GET /workspaces": {
+        "count": 1,
+        "mean": 34.3,
+        "p50": 34.3,
+        "p95": 34.3,
+        "p99": 34.3,
+        "max": 34.3,
+        "rps": 0.1,
+        "error_rate": 0.0,
+        "statuses": {
+          "200": 1
+        }
+      },
+      "POST /auth/login": {
+        "count": 100,
+        "mean": 260.1,
+        "p50": 271.6,
+        "p95": 361.9,
+        "p99": 383.7,
+        "max": 388.9,
+        "rps": 7.0,
+        "error_rate": 0.0,
+        "statuses": {
+          "200": 100
+        }
+      },
+      "POST /auth/register-org": {
+        "count": 1,
+        "mean": 255.6,
+        "p50": 255.6,
+        "p95": 255.6,
+        "p99": 255.6,
+        "max": 255.6,
+        "rps": 0.1,
+        "error_rate": 0.0,
+        "statuses": {
+          "201": 1
+        }
+      },
+      "POST /connections": {
+        "count": 1,
+        "mean": 38.3,
+        "p50": 38.3,
+        "p95": 38.3,
+        "p99": 38.3,
+        "max": 38.3,
+        "rps": 0.1,
+        "error_rate": 0.0,
+        "statuses": {
+          "201": 1
+        }
+      },
+      "POST /users": {
+        "count": 100,
+        "mean": 345.9,
+        "p50": 348.6,
+        "p95": 466.7,
+        "p99": 516.2,
+        "max": 650.0,
+        "rps": 7.0,
+        "error_rate": 0.0,
+        "statuses": {
+          "201": 100
+        }
+      },
+      "POST /workflows": {
+        "count": 500,
+        "mean": 144.6,
+        "p50": 120.3,
+        "p95": 367.7,
+        "p99": 651.0,
+        "max": 720.3,
+        "rps": 34.8,
+        "error_rate": 0.0,
+        "statuses": {
+          "201": 500
+        }
+      },
+      "POST /workflows/{id}/publish": {
+        "count": 500,
+        "mean": 168.0,
+        "p50": 135.9,
+        "p95": 481.4,
+        "p99": 806.1,
+        "max": 863.7,
+        "rps": 34.8,
+        "error_rate": 0.0,
+        "statuses": {
+          "200": 500
+        }
+      }
+    }
+  },
+  "burst": {
+    "load_seconds": 42.3,
+    "drain_seconds_after_load": "timeout",
+    "api": {
+      "POST /hooks/{token} (burst)": {
+        "count": 3000,
+        "mean": 3189.4,
+        "p50": 2244.5,
+        "p95": 8494.2,
+        "p99": 9922.8,
+        "max": 11452.7,
+        "rps": 70.9,
+        "error_rate": 0.0,
+        "statuses": {
+          "202": 3000
+        }
+      }
+    },
+    "client_errors": {},
+    "executions": {
+      "total": 3000,
+      "by_status": {
+        "CANCELLED": 0,
+        "COMPLETED": 0,
+        "FAILED": 0,
+        "RUNNING": 3000
+      },
+      "failure_rate": 0.0,
+      "throughput_per_s": 0.0,
+      "end_to_end_ms": {
+        "count": 0,
+        "mean": 0.0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "max": 0.0
+      },
+      "run_time_ms": {
+        "count": 0,
+        "mean": 0.0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "max": 0.0
+      },
+      "node_retries_scheduled": 0,
+      "integration_calls": 0,
+      "integration_errored_attempts": 0
+    },
+    "queue": {
+      "samples": 14,
+      "max_ready": 3000,
+      "max_running": 0,
+      "max_delayed": 3006,
+      "max_oldest_ready_s": 45.05,
+      "series": [
+        {
+          "t": 0.3,
+          "ready": 0,
+          "delayed": 6,
+          "running": 0,
+          "oldest_ready_s": 0.0
+        },
+        {
+          "t": 4.7,
+          "ready": 423,
+          "delayed": 478,
+          "running": 0,
+          "oldest_ready_s": 3.89
+        },
+        {
+          "t": 11.4,
+          "ready": 813,
+          "delayed": 823,
+          "running": 0,
+          "oldest_ready_s": 11.21
+        },
+        {
+          "t": 13.5,
+          "ready": 959,
+          "delayed": 985,
+          "running": 0,
+          "oldest_ready_s": 13.08
+        },
+        {
+          "t": 20.9,
+          "ready": 1354,
+          "delayed": 1360,
+          "running": 0,
+          "oldest_ready_s": 20.57
+        },
+        {
+          "t": 24.7,
+          "ready": 1616,
+          "delayed": 1810,
+          "running": 0,
+          "oldest_ready_s": 23.82
+        },
+        {
+          "t": 32.9,
+          "ready": 2099,
+          "delayed": 2227,
+          "running": 0,
+          "oldest_ready_s": 32.29
+        },
+        {
+          "t": 35.1,
+          "ready": 2434,
+          "delayed": 2536,
+          "running": 0,
+          "oldest_ready_s": 34.62
+        },
+        {
+          "t": 37.6,
+          "ready": 2839,
+          "delayed": 2877,
+          "running": 0,
+          "oldest_ready_s": 36.75
+        },
+        {
+          "t": 40.0,
+          "ready": 2917,
+          "delayed": 2923,
+          "running": 0,
+          "oldest_ready_s": 39.43
+        },
+        {
+          "t": 42.1,
+          "ready": 2974,
+          "delayed": 2980,
+          "running": 0,
+          "oldest_ready_s": 41.88
+        },
+        {
+          "t": 43.1,
+          "ready": 3000,
+          "delayed": 3006,
+          "running": 0,
+          "oldest_ready_s": 42.98
+        },
+        {
+          "t": 44.1,
+          "ready": 3000,
+          "delayed": 3006,
+          "running": 0,
+          "oldest_ready_s": 44.0
+        },
+        {
+          "t": 45.2,
+          "ready": 3000,
+          "delayed": 3006,
+          "running": 0,
+          "oldest_ready_s": 45.05
+        }
+      ]
+    },
+    "webhooks_sent": 3000,
+    "webhooks_accepted": 3000,
+    "ingest_seconds": 42.34,
+    "ingest_rate_per_s": 70.9,
+    "target_workflows": 500
+  },
+  "meta": {
+    "started_at": "2026-10-01T21:34:34.361797+00:00",
+    "base_url": "http://localhost:8080",
+    "label": "ingest-only-workers-stopped",
+    "client_host": "Linux x86_64, python 3.11.15",
+    "params": {
+      "base_url": "http://localhost:8080",
+      "sandbox_control": "http://localhost:9000",
+      "sandbox_internal": "http://sandbox:9000",
+      "users": 100,
+      "workflows": 500,
+      "steady_seconds": 0,
+      "think_min": 2.0,
+      "think_max": 4.0,
+      "burst": 3000,
+      "burst_concurrency": 250,
+      "chaos": 0,
+      "chaos_latency_ms": 300,
+      "chaos_jitter_ms": 700,
+      "chaos_failure_rate": 0.15,
+      "chaos_timeout_rate": 0.05,
+      "chaos_timeout_ms": 20000,
+      "drain_timeout": 3.0,
+      "sample_interval": 1.0,
+      "max_connections": 300,
+      "label": "ingest-only-workers-stopped"
+    }
+  }
+}

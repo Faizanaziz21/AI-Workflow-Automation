@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels: { app.kubernetes.io/name: worker }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app.kubernetes.io/name: worker } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: worker }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9101" }
+    spec:
+      # Workers drain in-flight jobs on SIGTERM, then hand leftovers back to the queue.
+      terminationGracePeriodSeconds: 45
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: worker
+          image: flowforge/backend
+          args: ["python", "-m", "app.workers.worker"]
+          ports: [{ name: metrics, containerPort: 9101 }]
+          envFrom: [{ configMapRef: { name: flowforge-config } }, { secretRef: { name: flowforge-secrets } }]
+          env: [{ name: FF_STORAGE_DIR, value: /data/storage }]
+          livenessProbe: { tcpSocket: { port: metrics }, periodSeconds: 20 }
+          resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { cpu: "2", memory: 2Gi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+          volumeMounts: [{ name: storage, mountPath: /data/storage }, { name: tmp, mountPath: /tmp }]
+      volumes:
+        - name: storage
+          persistentVolumeClaim: { claimName: flowforge-storage }
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: worker }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: worker }
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+    - { type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } } }
+    # Preferred: scale on backlog. Requires prometheus-adapter exposing flowforge_queue_depth.
+    - type: External
+      external:
+        metric: { name: flowforge_queue_depth, selector: { matchLabels: { queue: ready } } }
+        target: { type: AverageValue, averageValue: "100" }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: worker }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: worker } }

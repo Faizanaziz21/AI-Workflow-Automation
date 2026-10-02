@@ -1,0 +1,18 @@
+# Run before each rollout (e.g. Argo CD PreSync hook / CI step). Alembic migrations are idempotent.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flowforge-migrate
+  annotations: { argocd.argoproj.io/hook: PreSync, argocd.argoproj.io/hook-delete-policy: BeforeHookCreation }
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: migrate
+          image: flowforge/backend
+          command: ["alembic", "upgrade", "head"]
+          envFrom: [{ configMapRef: { name: flowforge-config } }, { secretRef: { name: flowforge-secrets } }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }

@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels: { app.kubernetes.io/name: web }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app.kubernetes.io/name: web } }
+  template:
+    metadata: { labels: { app.kubernetes.io/name: web } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: web
+          image: flowforge/web
+          env: [{ name: FF_API_URL, value: "http://api:8000" }]
+          ports: [{ name: http, containerPort: 3000 }]
+          readinessProbe: { httpGet: { path: /login, port: http }, periodSeconds: 10 }
+          resources: { requests: { cpu: 100m, memory: 192Mi }, limits: { cpu: 500m, memory: 512Mi } }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: web }
+spec:
+  selector: { app.kubernetes.io/name: web }
+  ports: [{ name: http, port: 3000, targetPort: http }]

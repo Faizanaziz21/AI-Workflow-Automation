@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../base]
+# Images published by CI (.github/workflows/ci.yml) on every push to main. Pin newTag to a commit SHA for releases
+# (e.g. `kustomize edit set image flowforge/backend=ghcr.io/faizanaziz21/flowforge-backend:<sha>`).
+images:
+  - { name: flowforge/backend, newName: ghcr.io/faizanaziz21/flowforge-backend, newTag: latest }
+  - { name: flowforge/web, newName: ghcr.io/faizanaziz21/flowforge-web, newTag: latest }
+patches:
+  # Replica counts are owned by the HPAs; raise their floors instead of patching Deployment replicas.
+  - target: { kind: HorizontalPodAutoscaler, name: worker }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 6 }
+  - target: { kind: HorizontalPodAutoscaler, name: api }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 3 }

@@ -1,0 +1,28 @@
+groups:
+  - name: flowforge
+    rules:
+      - alert: HighExecutionFailureRate
+        expr: sum(rate(flowforge_executions_finished_total{status="FAILED"}[10m])) / clamp_min(sum(rate(flowforge_executions_finished_total[10m])), 1e-9) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "More than 5% of executions are failing" }
+      - alert: QueueBacklog
+        expr: max(flowforge_queue_depth{queue="ready"}) > 1000
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Job queue backlog above 1000 ready jobs — scale workers" }
+      - alert: QueueLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(flowforge_job_queue_latency_seconds_bucket[5m]))) > 5
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "p95 job pickup latency above 5s" }
+      - alert: AIErrorsElevated
+        expr: sum(rate(flowforge_ai_calls_total{status!="success"}[10m])) / clamp_min(sum(rate(flowforge_ai_calls_total[10m])), 1e-9) > 0.1
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "More than 10% of LLM calls fail or return invalid output" }
+      - alert: APIHighLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(flowforge_http_request_duration_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "API p95 latency above 1s" }
